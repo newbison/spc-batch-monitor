@@ -50,13 +50,15 @@ def _build_template_csv(n: int) -> str:
 def render_data_entry(repo: DataRepository):
     st.header("🧪 Batch Data Entry")
 
-    mode = st.radio("Input mode:", ["📂 CSV Upload", "✏️ Manual Entry"],
+    mode = st.radio("Input mode:", ["📂 CSV Upload", "✏️ Manual Entry", "📋 View & Edit"],
                     horizontal=True, key="entry_mode")
 
     if mode == "📂 CSV Upload":
         _render_csv_upload(repo)
-    else:
+    elif mode == "✏️ Manual Entry":
         _render_manual_entry(repo)
+    else:
+        _render_view_edit(repo)
 
 
 def _render_csv_upload(repo: DataRepository):
@@ -270,3 +272,113 @@ def _render_manual_entry(repo: DataRepository):
         st.dataframe(tail[display_cols], use_container_width=True, hide_index=True)
     else:
         st.info("No data yet.")
+
+
+def _render_view_edit(repo: DataRepository):
+    st.subheader("View & Edit Recent Batches")
+    today = date.today().isoformat()
+
+    df = repo.load_all()
+    if df.empty:
+        st.info("No data yet.")
+        return
+
+    today_df = df[df["date"] == today]
+    if today_df.empty:
+        st.info("No batches entered today.")
+    else:
+        rep_cols = sorted(
+            [c for c in df.columns if c.startswith("rep") and c[3:].isdigit()],
+            key=lambda x: int(x[3:]),
+        )
+        display_cols = ["date", "batch_id", "formula", "parameter"] + rep_cols + ["lower_spec", "upper_spec"]
+        display = today_df[display_cols].sort_values(["date", "batch_id", "parameter"])
+
+        st.caption(f"Today's batches ({today}): {len(display)} rows, "
+                   f"{today_df['batch_id'].nunique()} batches")
+        st.dataframe(display, use_container_width=True, hide_index=True)
+
+    # Edit a specific batch
+    st.divider()
+    st.markdown("### Edit a Batch")
+    all_batches = sorted(df["batch_id"].unique().tolist(), reverse=True)
+    edit_batch = st.selectbox("Select batch", all_batches, key="ve_select_batch")
+
+    if edit_batch:
+        batch_df = repo.get_batch(edit_batch)
+        if batch_df.empty:
+            st.warning(f"No data found for batch {edit_batch}.")
+            return
+
+        batch_date = batch_df["date"].iloc[0]
+        batch_formula = batch_df["formula"].iloc[0]
+
+        # Operator can only edit today's batches
+        if batch_date != today:
+            st.warning(f"Batch {edit_batch} is from {batch_date}. Operators can only edit today's batches.")
+            return
+
+        st.write(f"Batch: **{edit_batch}**  |  Formula: **{batch_formula}**  |  Date: **{batch_date}**")
+
+        for _, row in batch_df.iterrows():
+            param = row["parameter"]
+            with st.expander(f"{param}", expanded=False):
+                # Find existing replicate values
+                existing_reps = []
+                for i in range(1, 51):
+                    col = f"rep{i}"
+                    if col in row.index and not (isinstance(row[col], float) and math.isnan(row[col])):
+                        existing_reps.append(float(row[col]))
+
+                n = len(existing_reps)
+
+                rc1, rc2 = st.columns(2)
+                with rc1:
+                    lsl_val = float(row["lower_spec"]) if not (
+                        isinstance(row["lower_spec"], float) and math.isnan(row["lower_spec"])
+                    ) else 0.0
+                    new_lsl = st.number_input(f"LSL", value=lsl_val, key=f"ve_lsl_{param}")
+                with rc2:
+                    usl_val = float(row["upper_spec"]) if not (
+                        isinstance(row["upper_spec"], float) and math.isnan(row["upper_spec"])
+                    ) else 0.0
+                    new_usl = st.number_input(f"USL", value=usl_val, key=f"ve_usl_{param}")
+
+                new_reps = []
+                rcols = st.columns(min(n, 10))
+                for i in range(n):
+                    with rcols[i % 10]:
+                        val = st.number_input(
+                            f"R{i+1}",
+                            value=existing_reps[i],
+                            key=f"ve_rep_{param}_{i}",
+                            label_visibility="collapsed",
+                        )
+                        new_reps.append(val)
+
+                c_save, c_del = st.columns(2)
+                with c_save:
+                    if st.button(f"\U0001f4be Save {param}", key=f"ve_save_{param}"):
+                        try:
+                            repo.update_batch(
+                                edit_batch, batch_formula, param,
+                                {"reps": new_reps, "lower_spec": new_lsl, "upper_spec": new_usl},
+                            )
+                            st.success(f"Updated {param}")
+                            st.rerun()
+                        except ValueError as e:
+                            st.error(str(e))
+
+                with c_del:
+                    if st.button(f"\U0001f5d1 Delete {param}", key=f"ve_del_{param}"):
+                        repo.delete_batch(edit_batch, batch_formula, param)
+                        st.success(f"Deleted {param} row")
+                        st.rerun()
+
+        st.divider()
+        st.warning("⚠️ Delete entire batch")
+        if st.button("\U0001f5d1 Delete Entire Batch", key="ve_delete_batch",
+                     help=f"Permanently delete all {len(batch_df)} rows for {edit_batch}"):
+            count = repo.delete_all_for_batch(edit_batch)
+            st.success(f"Deleted {count} rows for batch {edit_batch}")
+            st.rerun()
