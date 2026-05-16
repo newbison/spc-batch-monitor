@@ -1,11 +1,10 @@
 import streamlit as st
-import pandas as pd
-from config import DATA_FILE
+from data_access.base import DataRepository
 
-ROLES = ["Operator", "Engineer", "Manager"]
+ROLES = ["Operator", "Engineer", "Manager", "Admin"]
 
 
-def render_sidebar() -> tuple[str, str, str | None]:
+def render_sidebar(repo: DataRepository) -> tuple[str, str, str | None]:
     with st.sidebar:
         st.markdown("""
         <div class="sidebar-header">
@@ -18,19 +17,14 @@ def render_sidebar() -> tuple[str, str, str | None]:
 
         st.divider()
 
-        # Data summary
-        params_list = []
-        if DATA_FILE.exists():
-            df = pd.read_csv(DATA_FILE)
-            params_list = sorted(df["parameter"].unique().tolist())
-            rep_cols = [c for c in df.columns if c.startswith("rep")]
-            n_reps = len(rep_cols)
+        # Data summary (from SQLite, not CSV)
+        df = repo.load_all()
+        if not df.empty:
+            rep_cols = [c for c in df.columns if c.startswith("rep") and c[3:].isdigit()]
             st.caption(f"{len(df)} rows  ·  {df['formula'].nunique()} formulas  "
-                       f"·  {df['batch_id'].nunique()} batches  ·  n={n_reps}")
+                       f"·  {df['batch_id'].nunique()} batches  ·  {len(rep_cols)} rep cols")
         else:
             st.caption("No data loaded")
-
-        st.divider()
 
         page = None
         if role == "Operator":
@@ -39,14 +33,16 @@ def render_sidebar() -> tuple[str, str, str | None]:
             page = st.radio("Page", ["SPC Analysis"], label_visibility="collapsed")
         elif role == "Manager":
             page = st.radio("Page", ["Dashboard"], label_visibility="collapsed")
+        elif role == "Admin":
+            page = st.radio("Page", ["Data Management"], label_visibility="collapsed")
 
-        # Parameter selector (only shown for engineer)
+        # Parameter read from session state (set by engineer page selector)
         param = None
         if role == "Engineer":
             st.divider()
-            if params_list:
-                param = st.selectbox("Parameter", params_list)
-            else:
-                param = st.selectbox("Parameter", ["—"])
+            current_formula = st.session_state.get("eng_formula", "—")
+            current_param = st.session_state.get("eng_param", "—")
+            st.caption(f"Current: {current_formula} / {current_param}")
+            param = st.session_state.get("eng_param", None)
 
     return role, page, param
