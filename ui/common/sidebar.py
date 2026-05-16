@@ -1,14 +1,18 @@
 import streamlit as st
 import pandas as pd
-from config import DATA_FILE, SUBGROUP_SIZE
+from config import DATA_FILE
 
 ROLES = ["Operator", "Engineer", "Manager"]
 
 
 def render_sidebar() -> tuple[str, str, str | None]:
     with st.sidebar:
-        st.title("📊 SPC App")
-        st.caption("Statistical Process Control")
+        st.markdown("""
+        <div class="sidebar-header">
+            <h1>SPC App</h1>
+            <p>Statistical Process Control</p>
+        </div>
+        """, unsafe_allow_html=True)
 
         role = st.selectbox("Role", ROLES, key="role_selector")
 
@@ -21,13 +25,12 @@ def render_sidebar() -> tuple[str, str, str | None]:
             params_list = sorted(df["parameter"].unique().tolist())
             rep_cols = [c for c in df.columns if c.startswith("rep")]
             n_reps = len(rep_cols)
-            st.caption(f"{len(df)} rows | {df['formula'].nunique()} formulas "
-                       f"| {df['batch_id'].nunique()} batches | n={n_reps}")
+            st.caption(f"{len(df)} rows  ·  {df['formula'].nunique()} formulas  "
+                       f"·  {df['batch_id'].nunique()} batches  ·  n={n_reps}")
         else:
             st.caption("No data loaded")
 
         st.divider()
-        st.caption(f"Logged in as: **{role}**")
 
         page = None
         if role == "Operator":
@@ -37,7 +40,7 @@ def render_sidebar() -> tuple[str, str, str | None]:
         elif role == "Manager":
             page = st.radio("Page", ["Dashboard"], label_visibility="collapsed")
 
-        # Parameter selector (only shown for engineer, hidden for operator/manager)
+        # Parameter selector (only shown for engineer)
         param = None
         if role == "Engineer":
             st.divider()

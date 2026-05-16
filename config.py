@@ -5,8 +5,6 @@ DATA_DIR = PROJECT_ROOT / "data"
 DATA_FILE = DATA_DIR / "coating_batches.csv"
 DB_FILE = DATA_DIR / "spc.db"
 
-SUBGROUP_SIZE = 10
-
 # SPC constants for X-bar & R charts: A2, D3, D4 by subgroup size n
 # Source: ASTM E2587 / ISO 7870-2 standard tables
 _SPC_CONSTANTS = {

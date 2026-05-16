@@ -23,20 +23,25 @@ def compute_xbar_r(df: pd.DataFrame, n: int | None = None) -> dict:
     if not rep_cols:
         raise ValueError("No rep columns found (rep1, rep2, ...).")
 
-    n_detected = len(rep_cols)
-    if n is None:
-        n = n_detected
-    elif n != n_detected:
-        raise ValueError(f"Expected n={n} but found {n_detected} rep columns.")
-
-    A2, D3, D4 = get_spc_constants(n)
-
     reps = df[rep_cols].values.astype(float)
-    xbar = np.mean(reps, axis=1)
-    r = np.max(reps, axis=1) - np.min(reps, axis=1)
 
-    Xbarbar = float(np.mean(xbar))
-    Rbar = float(np.mean(r))
+    # Detect per-row n from non-NaN values, or use all columns if n is fixed
+    if n is None:
+        # Use average n for control limit constants when n varies
+        n_per_row = np.sum(~np.isnan(reps), axis=1)
+        n_avg = int(round(float(np.mean(n_per_row))))
+        # Fall back to detected column count if average is unreasonable
+        n_used = n_avg if n_avg > 0 else len(rep_cols)
+    else:
+        n_used = n
+
+    A2, D3, D4 = get_spc_constants(n_used)
+
+    xbar = np.nanmean(reps, axis=1)
+    r = np.nanmax(reps, axis=1) - np.nanmin(reps, axis=1)
+
+    Xbarbar = float(np.nanmean(xbar))
+    Rbar = float(np.nanmean(r))
 
     return {
         "xbar": xbar,
