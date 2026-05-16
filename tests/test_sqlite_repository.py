@@ -73,3 +73,135 @@ def test_get_parameters():
 
         params = repo.get_parameters()
         assert sorted(params) == ["adhesion", "cohesion"]
+
+
+def test_append_batch_dedup():
+    """Same batch_id+formula+parameter should not create duplicates."""
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        db_path = Path(tmpdir) / "test.db"
+        repo = SqliteRepository(db_path, auto_migrate=False)
+
+        repo.append_batch("B-001", "2025-06-01", "Coating A", {
+            "adhesion": {"reps": [1.05, 1.10, 1.02], "lower_spec": 0.6, "upper_spec": 1.5},
+        })
+
+        # Same batch+formula+param — should be ignored
+        repo.append_batch("B-001", "2025-06-01", "Coating A", {
+            "adhesion": {"reps": [9.99, 9.99, 9.99], "lower_spec": 0.6, "upper_spec": 1.5},
+        })
+
+        df = repo.load_all()
+        match = df[(df["batch_id"] == "B-001") & (df["parameter"] == "adhesion")]
+        assert len(match) == 1  # not 2
+        # Original values preserved
+        assert abs(float(match["rep1"].iloc[0]) - 1.05) < 0.01
+
+
+def test_upload_csv_dedup():
+    """upload_csv should skip existing rows and count correctly."""
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        db_path = Path(tmpdir) / "test.db"
+        repo = SqliteRepository(db_path, auto_migrate=False)
+
+        repo.append_batch("B-001", "2025-06-01", "Coating A", {
+            "adhesion": {"reps": [1.0], "lower_spec": float("nan"), "upper_spec": float("nan")},
+        })
+
+        new_df = pd.DataFrame({
+            "date": ["2025-06-01", "2025-06-02"],
+            "batch_id": ["B-001", "B-002"],
+            "formula": ["Coating A", "Coating A"],
+            "parameter": ["adhesion", "adhesion"],
+            "rep1": [9.99, 1.1],
+            "lower_spec": [float("nan"), float("nan")],
+            "upper_spec": [float("nan"), float("nan")],
+        })
+
+        result = repo.upload_csv(new_df)
+        assert result["skipped"] == 1  # B-001 already exists
+        assert result["inserted"] >= 1  # B-002 is new
+        assert len(result["errors"]) == 0
+
+        df = repo.load_all()
+        assert len(df) == 2  # original 1 + new 1
+
+
+def test_upload_csv_rejects_invalid():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        db_path = Path(tmpdir) / "test.db"
+        repo = SqliteRepository(db_path, auto_migrate=False)
+
+        bad_df = pd.DataFrame({
+            "date": ["2025-06-01"],
+            "batch_id": ["B-001"],
+            "formula": ["Coating A"],
+            "parameter": ["adhesion"],
+            "rep1": [-1.0],  # negative — reject
+            "lower_spec": [float("nan")],
+            "upper_spec": [float("nan")],
+        })
+
+        result = repo.upload_csv(bad_df)
+        assert len(result["errors"]) > 0
+        assert result["inserted"] == 0
+
+
+def test_auto_migration_from_csv():
+    """SqliteRepository should import existing CSV on first run."""
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        csv_path = Path(tmpdir) / "test_data.csv"
+        df_in = pd.DataFrame({
+            "date": ["2025-06-01", "2025-06-01"],
+            "batch_id": ["B-001", "B-001"],
+            "formula": ["Coating A", "Coating A"],
+            "parameter": ["adhesion", "cohesion"],
+            "rep1": [1.05, 1500.0],
+            "rep2": [1.10, 1520.0],
+            "rep3": [1.02, 1490.0],
+            "lower_spec": [0.6, 1000.0],
+            "upper_spec": [1.5, float("nan")],
+        })
+        df_in.to_csv(csv_path, index=False)
+
+        import config
+        original_data_file = config.DATA_FILE
+        config.DATA_FILE = csv_path
+
+        try:
+            db_path = Path(tmpdir) / "test.db"
+            repo = SqliteRepository(db_path)  # auto_migrate defaults to True
+            df = repo.load_all()
+            assert len(df) == 2
+            assert set(df["parameter"].tolist()) == {"adhesion", "cohesion"}
+        finally:
+            config.DATA_FILE = original_data_file
+
+
+def test_auto_migration_skips_if_db_has_data():
+    """If DB already has data, don't migrate CSV again."""
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        csv_path = Path(tmpdir) / "test_data.csv"
+        df_in = pd.DataFrame({
+            "date": ["2025-06-01"],
+            "batch_id": ["B-001"],
+            "formula": ["Coating A"],
+            "parameter": ["adhesion"],
+            "rep1": [1.05],
+            "lower_spec": [float("nan")],
+            "upper_spec": [float("nan")],
+        })
+        df_in.to_csv(csv_path, index=False)
+
+        import config
+        original_data_file = config.DATA_FILE
+        config.DATA_FILE = csv_path
+
+        try:
+            db_path = Path(tmpdir) / "test.db"
+            repo = SqliteRepository(db_path)
+            assert len(repo.load_all()) == 1
+
+            repo2 = SqliteRepository(db_path)
+            assert len(repo2.load_all()) == 1
+        finally:
+            config.DATA_FILE = original_data_file
