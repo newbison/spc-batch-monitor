@@ -232,6 +232,80 @@ class SqliteRepository(DataRepository):
 
         return result
 
+    def get_batch(self, batch_id: str) -> pd.DataFrame:
+        """Return all parameter rows for a given batch_id."""
+        with self._conn() as conn:
+            df = pd.read_sql(
+                f"SELECT {', '.join(ALL_COLUMNS)} FROM measurements WHERE batch_id=? ORDER BY parameter",
+                conn, params=(batch_id,)
+            )
+            return self._drop_empty_rep_cols(df)
+
+    def update_batch(self, batch_id: str, formula: str, parameter: str,
+                     new_values: dict) -> bool:
+        """Update rep values and specs for an existing batch/parameter row.
+
+        Returns True if the row was found and updated, False if not found.
+        Raises ValueError if new_values fails validation.
+        """
+        # Validate new values
+        row = {
+            "date": "2025-01-01",  # placeholder for validation
+            "batch_id": batch_id,
+            "formula": formula,
+            "parameter": parameter,
+            "lower_spec": new_values["lower_spec"],
+            "upper_spec": new_values["upper_spec"],
+            "reps": new_values["reps"],
+        }
+        flat = _row_to_dict(row)
+        errors = validate_rows(pd.DataFrame([flat]))
+        if errors:
+            raise ValueError(f"Validation failed:\n" + "\n".join(errors))
+
+        # Build SET clause from rep columns that have values
+        set_parts = []
+        params = []
+        for i, val in enumerate(new_values["reps"], start=1):
+            set_parts.append(f"rep{i} = ?")
+            params.append(val)
+        set_parts.append("lower_spec = ?")
+        params.append(new_values["lower_spec"] if not (
+            isinstance(new_values["lower_spec"], float)
+            and math.isnan(new_values["lower_spec"])
+        ) else None)
+        set_parts.append("upper_spec = ?")
+        params.append(new_values["upper_spec"] if not (
+            isinstance(new_values["upper_spec"], float)
+            and math.isnan(new_values["upper_spec"])
+        ) else None)
+
+        params.extend([batch_id, formula, parameter])
+
+        sql = f"UPDATE measurements SET {', '.join(set_parts)} WHERE batch_id=? AND formula=? AND parameter=?"
+
+        with self._conn() as conn:
+            cursor = conn.execute(sql, params)
+            return cursor.rowcount > 0
+
+    def delete_batch(self, batch_id: str, formula: str, parameter: str) -> bool:
+        """Delete a single batch/parameter row. Returns True if deleted."""
+        with self._conn() as conn:
+            cursor = conn.execute(
+                "DELETE FROM measurements WHERE batch_id=? AND formula=? AND parameter=?",
+                (batch_id, formula, parameter)
+            )
+            return cursor.rowcount > 0
+
+    def delete_all_for_batch(self, batch_id: str) -> int:
+        """Delete all parameter rows for a batch. Returns count of deleted rows."""
+        with self._conn() as conn:
+            cursor = conn.execute(
+                "DELETE FROM measurements WHERE batch_id=?",
+                (batch_id,)
+            )
+            return cursor.rowcount
+
     def _auto_migrate_from_csv(self):
         """Import existing CSV data into SQLite if DB is empty."""
         with self._conn() as conn:

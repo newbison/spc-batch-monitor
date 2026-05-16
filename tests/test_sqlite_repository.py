@@ -205,3 +205,105 @@ def test_auto_migration_skips_if_db_has_data():
             assert len(repo2.load_all()) == 1
         finally:
             config.DATA_FILE = original_data_file
+
+
+def test_get_batch():
+    """get_batch should return all params for a batch_id."""
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        db_path = Path(tmpdir) / "test.db"
+        repo = SqliteRepository(db_path, auto_migrate=False)
+
+        repo.append_batch("B-001", "2025-06-01", "Coating A", {
+            "adhesion": {"reps": [1.05, 1.10, 1.02], "lower_spec": 0.6, "upper_spec": 1.5},
+            "cohesion": {"reps": [1500, 1520, 1490], "lower_spec": 1000.0, "upper_spec": float("nan")},
+        })
+
+        batch_df = repo.get_batch("B-001")
+        assert len(batch_df) == 2  # 2 parameters
+        assert set(batch_df["parameter"].tolist()) == {"adhesion", "cohesion"}
+
+
+def test_get_batch_not_found():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        db_path = Path(tmpdir) / "test.db"
+        repo = SqliteRepository(db_path, auto_migrate=False)
+        batch_df = repo.get_batch("NONEXISTENT")
+        assert len(batch_df) == 0
+
+
+def test_update_batch():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        db_path = Path(tmpdir) / "test.db"
+        repo = SqliteRepository(db_path, auto_migrate=False)
+
+        repo.append_batch("B-001", "2025-06-01", "Coating A", {
+            "adhesion": {"reps": [1.05, 1.10, 1.02], "lower_spec": 0.6, "upper_spec": 1.5},
+        })
+
+        # Update adhesion values
+        ok = repo.update_batch("B-001", "Coating A", "adhesion", {
+            "reps": [2.0, 2.1, 2.2], "lower_spec": 0.6, "upper_spec": 1.5,
+        })
+        assert ok is True
+
+        df = repo.get_for_parameter("adhesion")
+        assert abs(float(df["rep1"].iloc[0]) - 2.0) < 0.01
+
+
+def test_update_batch_not_found():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        db_path = Path(tmpdir) / "test.db"
+        repo = SqliteRepository(db_path, auto_migrate=False)
+        ok = repo.update_batch("NOPE", "Coating A", "adhesion", {
+            "reps": [1.0], "lower_spec": float("nan"), "upper_spec": float("nan"),
+        })
+        assert ok is False
+
+
+def test_update_batch_rejects_invalid():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        db_path = Path(tmpdir) / "test.db"
+        repo = SqliteRepository(db_path, auto_migrate=False)
+
+        repo.append_batch("B-001", "2025-06-01", "Coating A", {
+            "adhesion": {"reps": [1.05, 1.10, 1.02], "lower_spec": 0.6, "upper_spec": 1.5},
+        })
+
+        with pytest.raises(ValueError, match="Validation failed"):
+            repo.update_batch("B-001", "Coating A", "adhesion", {
+                "reps": [-1.0], "lower_spec": 0.6, "upper_spec": 1.5,
+            })
+
+
+def test_delete_batch():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        db_path = Path(tmpdir) / "test.db"
+        repo = SqliteRepository(db_path, auto_migrate=False)
+
+        repo.append_batch("B-001", "2025-06-01", "Coating A", {
+            "adhesion": {"reps": [1.0], "lower_spec": float("nan"), "upper_spec": float("nan")},
+            "cohesion": {"reps": [1500], "lower_spec": float("nan"), "upper_spec": float("nan")},
+        })
+
+        deleted = repo.delete_batch("B-001", "Coating A", "cohesion")
+        assert deleted is True
+
+        df = repo.load_all()
+        assert len(df) == 1  # only adhesion left
+
+
+def test_delete_all_for_batch():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        db_path = Path(tmpdir) / "test.db"
+        repo = SqliteRepository(db_path, auto_migrate=False)
+
+        repo.append_batch("B-001", "2025-06-01", "Coating A", {
+            "adhesion": {"reps": [1.0], "lower_spec": float("nan"), "upper_spec": float("nan")},
+            "cohesion": {"reps": [1500], "lower_spec": float("nan"), "upper_spec": float("nan")},
+        })
+
+        count = repo.delete_all_for_batch("B-001")
+        assert count == 2
+
+        df = repo.load_all()
+        assert len(df) == 0
