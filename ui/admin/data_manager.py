@@ -76,6 +76,7 @@ def render_data_manager(repo: DataRepository):
         use_container_width=True,
         hide_index=True,
         selection_mode="multi-row",
+        on_select="rerun",
         key="dm_table",
     )
 
@@ -114,8 +115,8 @@ def render_data_manager(repo: DataRepository):
                 st.rerun()
 
     # Edit / Delete selected rows
-    if selection is not None and len(selection.rows) > 0:
-        selected_indices = selection.rows
+    if selection is not None and len(selection.selection.rows) > 0:
+        selected_indices = selection.selection.rows
         selected_rows = display_df.iloc[selected_indices]
 
         with a3:
