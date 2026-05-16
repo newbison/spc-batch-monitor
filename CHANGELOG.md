@@ -1,14 +1,16 @@
 # Changelog
 
-## 2026-05-15
+## 2026-05-16
 
-- Initial MVP: Streamlit SPC app for adhesive batch process monitoring
-- Data access layer with CSV repository (formula + inline spec columns)
-- SPC engine: X-bar & R control limits, Western Electric rules, Pp/Ppk/PPM capability
-- Plotly visualizations: control charts (paired X-bar/R), capability histograms
-- Operator UI: CSV upload (default) with validation + manual entry with formula/spec toggles
-- Engineer UI: combined formula-scoped SPC analysis (chart + capability on one page)
-- Manager dashboard: formula count, today's uploads, red/yellow/green status per formula×parameter
-- One-sided spec support (NaN = no limit)
-- 12 tests passing (control limits, rules, capability, integration)
-- 30 batches sample data with 2 formulas (Adhesive A, Adhesive B)
+- SQLite data storage (SqliteRepository) replacing single-file CSV as source of truth
+- Data validation module: rejects negative values, bad dates, non-numeric data
+- Deduplication via UNIQUE(batch_id, formula, parameter); CSV upload reports inserted/skipped/errors
+- Auto-migration: existing coating_batches.csv imported into SQLite on first run
+- Variable subgroup size support (adhesion=5, cohesion=15, rolling_ball_tack=8, liner_release=10)
+- New visualization modules: run chart, moving range, rolling Ppk, boxplot
+- Shared Plotly theme (_theme.py) and Streamlit visual overhaul (CSS + config.toml)
+- Engineer page: 4 chart tabs, all-formulas out-of-spec warning banner, side-by-side selectors
+- Manager dashboard: warning banners for out-of-spec and marginal items at top
+- Updated specs: adhesion 0.6-1.5 N/mm, cohesion >=1000, liner_release 5-20, rolling_ball_tack 10-50
+- Regenerated sample data with correct specs, variable reps, renamed parameter
+- 31 tests passing (19 new: validation, SqliteRepository, SQLite integration)
