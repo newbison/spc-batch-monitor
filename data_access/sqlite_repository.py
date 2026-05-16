@@ -79,10 +79,19 @@ class SqliteRepository(DataRepository):
         with self._conn() as conn:
             conn.execute(SCHEMA_SQL)
 
+    @staticmethod
+    def _drop_empty_rep_cols(df: pd.DataFrame) -> pd.DataFrame:
+        """Drop rep columns where all values are null (unused in this schema)."""
+        rep_cols = [c for c in df.columns if c.startswith("rep") and c[3:].isdigit()]
+        empty = [c for c in rep_cols if df[c].isna().all()]
+        if empty:
+            df = df.drop(columns=empty)
+        return df
+
     def load_all(self) -> pd.DataFrame:
         with self._conn() as conn:
             df = pd.read_sql(f"SELECT {', '.join(ALL_COLUMNS)} FROM measurements ORDER BY date", conn)
-            return df
+            return self._drop_empty_rep_cols(df)
 
     def get_for_parameter(self, parameter: str) -> pd.DataFrame:
         with self._conn() as conn:
@@ -90,7 +99,7 @@ class SqliteRepository(DataRepository):
                 f"SELECT {', '.join(ALL_COLUMNS)} FROM measurements WHERE parameter=? ORDER BY date",
                 conn, params=(parameter,)
             )
-            return df
+            return self._drop_empty_rep_cols(df)
 
     def get_formulas(self) -> list[str]:
         with self._conn() as conn:
