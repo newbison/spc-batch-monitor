@@ -2,26 +2,52 @@ import streamlit as st
 import pandas as pd
 import math
 import re
+import io
 from datetime import datetime, date
-from config import DATA_FILE, DATA_DIR, SUBGROUP_SIZE
-
-from data_access.repository import CsvRepository
+from data_access.base import DataRepository
+from config import DATA_DIR
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 FIXED_COLS = {"date", "batch_id", "formula", "parameter", "lower_spec", "upper_spec"}
 
 
-def _detect_n_reps() -> int:
-    """Detect subgroup size from existing data, or fall back to config default."""
-    if DATA_FILE.exists():
-        df = pd.read_csv(DATA_FILE)
-        rep_cols = [c for c in df.columns if re.match(r"^rep\d+$", c)]
-        if rep_cols:
-            return len(rep_cols)
-    return SUBGROUP_SIZE
+def _build_template_csv(n: int) -> str:
+    """Return a CSV string template with example data for one batch.
+
+    Parameters
+    ----------
+    n : int
+        Number of replicate columns to include (from repo.subgroup_size()).
+    """
+    rep_cols = [f"rep{i}" for i in range(1, n + 1)]
+    rows = [
+        {
+            "date": "2025-06-01", "batch_id": "COAT-XXX", "formula": "Your Formula",
+            "parameter": "adhesion", "lower_spec": 0.6, "upper_spec": 1.5,
+            **{f"rep{i}": round(1.05 + (i - 3) * 0.04, 3) for i in range(1, n + 1)},
+        },
+        {
+            "date": "2025-06-01", "batch_id": "COAT-XXX", "formula": "Your Formula",
+            "parameter": "cohesion", "lower_spec": 1000.0, "upper_spec": None,
+            **{f"rep{i}": round(1500 + (i - 5) * 40) for i in range(1, n + 1)},
+        },
+        {
+            "date": "2025-06-01", "batch_id": "COAT-XXX", "formula": "Your Formula",
+            "parameter": "rolling_ball_tack", "lower_spec": 10.0, "upper_spec": 50.0,
+            **{f"rep{i}": round(30 + (i - 5) * 2, 1) for i in range(1, n + 1)},
+        },
+        {
+            "date": "2025-06-01", "batch_id": "COAT-XXX", "formula": "Your Formula",
+            "parameter": "liner_release", "lower_spec": 5.0, "upper_spec": 20.0,
+            **{f"rep{i}": round(12.5 + (i - 5) * 0.8, 2) for i in range(1, n + 1)},
+        },
+    ]
+    cols = ["date", "batch_id", "formula", "parameter", "lower_spec", "upper_spec"] + [f"rep{i}" for i in range(1, n + 1)]
+    df = pd.DataFrame(rows, columns=cols)
+    return df.to_csv(index=False)
 
 
-def render_data_entry(repo: CsvRepository):
+def render_data_entry(repo: DataRepository):
     st.header("🧪 Batch Data Entry")
 
     mode = st.radio("Input mode:", ["📂 CSV Upload", "✏️ Manual Entry"],
@@ -33,8 +59,8 @@ def render_data_entry(repo: CsvRepository):
         _render_manual_entry(repo)
 
 
-def _render_csv_upload(repo: CsvRepository):
-    n = _detect_n_reps()
+def _render_csv_upload(repo: DataRepository):
+    n = repo.subgroup_size()
     rep_cols_list = [f"rep{i}" for i in range(1, n + 1)]
     required_cols = FIXED_COLS | set(rep_cols_list)
 
@@ -42,6 +68,37 @@ def _render_csv_upload(repo: CsvRepository):
     st.caption(f"Expected columns: date, batch_id, formula, parameter, "
                f"{', '.join(rep_cols_list[:3])}...{rep_cols_list[-1]} "
                f"({n} replicates), lower_spec, upper_spec")
+
+    # --- CSV Format Instructions ---
+    with st.expander("CSV Format Instructions"):
+        st.markdown(f"""
+**Column layout** (one row per test-parameter combination):
+
+| Column | Description |
+|--------|-------------|
+| `date` | Batch date (YYYY-MM-DD) |
+| `batch_id` | Unique batch/lot identifier |
+| `formula` | Formula or product name |
+| `parameter` | Test name (e.g. adhesion, cohesion, rolling_ball_tack, liner_release) |
+| `rep1` … `rep{n}` | {n} replicate measurements |
+| `lower_spec` | Lower specification limit (leave blank if none) |
+| `upper_spec` | Upper specification limit (leave blank if none) |
+
+**Rules:**
+- One row per (batch, parameter) — a single batch produces {n} rows (one per test).
+- Spec limits: leave the cell **empty** (not 0) if a parameter has no lower or upper limit.
+- Formula names are case-sensitive — use the same spelling across all uploads.
+- Download the **template** below for a ready-to-edit example.
+""")
+
+        template_csv = _build_template_csv(n)
+        st.download_button(
+            label="Download CSV Template",
+            data=template_csv,
+            file_name="spc_template.csv",
+            mime="text/csv",
+            key="op_dl_template",
+        )
 
     uploaded = st.file_uploader("Choose CSV file", type=["csv"], key="op_upload")
 
@@ -67,30 +124,37 @@ def _render_csv_upload(repo: CsvRepository):
                 st.write(f"- {f}: {count} rows")
 
         st.divider()
-        action = st.radio("Action:", ["Append to existing data",
-                                       "Replace all data"],
-                          horizontal=True, key="op_action")
 
         if st.button("✅ Confirm Import", type="primary", key="op_import_btn"):
+            # Archive the raw CSV
             ts = datetime.now().strftime("%Y%m%d-%H%M%S")
             archive_path = UPLOADS_DIR / f"{ts}-{uploaded.name}"
+            UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
             new_df.to_csv(archive_path, index=False)
 
-            if action == "Replace all data":
-                new_df.to_csv(DATA_FILE, index=False)
-            else:
-                existing = pd.read_csv(DATA_FILE) if DATA_FILE.exists() else pd.DataFrame()
-                combined = pd.concat([existing, new_df], ignore_index=True)
-                combined.to_csv(DATA_FILE, index=False)
+            # Upload to SQLite with validation + dedup
+            result = repo.upload_csv(new_df)
 
-            st.success(f"✅ Imported {len(new_df)} rows. Archive: {archive_path.name}")
-            if "repo" in st.session_state:
-                del st.session_state["repo"]
-            st.rerun()
+            if result["errors"]:
+                st.error(f"Validation failed — {len(result['errors'])} error(s):")
+                for err in result["errors"][:10]:
+                    st.write(f"- {err}")
+                if len(result["errors"]) > 10:
+                    st.write(f"- ... and {len(result['errors']) - 10} more")
+
+            if result["inserted"] > 0 or result["skipped"] > 0:
+                msg = f"✅ Imported {result['inserted']} new rows"
+                if result["skipped"] > 0:
+                    msg += f", skipped {result['skipped']} duplicates"
+                msg += f". Archive: {archive_path.name}"
+                st.success(msg)
+
+            if not result["errors"]:
+                st.rerun()
 
 
-def _render_manual_entry(repo: CsvRepository):
-    n = _detect_n_reps()
+def _render_manual_entry(repo: DataRepository):
+    n = repo.subgroup_size()
     st.subheader(f"Manual Data Entry  — {n} replicates per test")
     st.caption("Enter measurements for each parameter.")
 
@@ -113,7 +177,7 @@ def _render_manual_entry(repo: CsvRepository):
 
     params = repo.get_parameters()
     if not params:
-        params = ["adhesion", "cohesion", "tack", "liner_release"]
+        params = ["adhesion", "cohesion", "rolling_ball_tack", "liner_release"]
 
     measurements = {}
     cols = st.columns(len(params))
@@ -188,9 +252,12 @@ def _render_manual_entry(repo: CsvRepository):
         if not formula:
             st.error("Please select or enter a formula name.")
         else:
-            repo.append_batch(batch_id, batch_date.isoformat(), formula, measurements)
-            st.success(f"Batch {batch_id} saved for {batch_date.isoformat()}")
-            st.rerun()
+            try:
+                repo.append_batch(batch_id, batch_date.isoformat(), formula, measurements)
+                st.success(f"Batch {batch_id} saved for {batch_date.isoformat()}")
+                st.rerun()
+            except ValueError as e:
+                st.error(str(e))
 
     st.divider()
     st.subheader("Recent Batches")
