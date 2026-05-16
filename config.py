@@ -3,6 +3,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_ROOT / "data"
 DATA_FILE = DATA_DIR / "coating_batches.csv"
+DB_FILE = DATA_DIR / "spc.db"
 
 SUBGROUP_SIZE = 10
 
