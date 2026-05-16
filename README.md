@@ -2,6 +2,16 @@
 
 Statistical Process Control (SPC) web app for monitoring chemical batch coating processes. Tracks 4 quality parameters per batch with variable subgroup sizes (5–15 replicates) across multiple formulas.
 
+![1778922140812](image/README/1778922140812.png)
+
+
+![1778922162913](image/README/1778922162913.png)
+
+
+![1778922204098](image/README/1778922204098.png)
+
+
+
 ## Features
 
 - **X-bar & R control charts** with dynamic subgroup sizes and ASTM E2587 constants
@@ -14,13 +24,13 @@ Statistical Process Control (SPC) web app for monitoring chemical batch coating 
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| UI | Streamlit |
-| Charts | Plotly |
+| Layer      | Technology                |
+| ---------- | ------------------------- |
+| UI         | Streamlit                 |
+| Charts     | Plotly                    |
 | SPC Engine | Pure Python (NumPy/SciPy) |
-| Database | SQLite (WAL mode) |
-| Testing | Pytest |
+| Database   | SQLite (WAL mode)         |
+| Testing    | Pytest                    |
 
 ## Installation
 
@@ -40,21 +50,21 @@ Sample data is auto-generated on first run if the database is empty. Select a ro
 
 ## Roles & Screens
 
-| Role | Screen | Capabilities |
-|------|--------|-------------|
-| Operator | Data Entry | CSV upload, manual entry, view/edit today's batches |
-| Engineer | SPC Analysis | Control charts, capability analysis, trend charts, boxplots |
-| Manager | Dashboard | KPI cards, out-of-spec banners, status table, trend expander |
-| Admin | Data Management | Filter, edit, delete, export CSV, import CSV |
+| Role     | Screen          | Capabilities                                                 |
+| -------- | --------------- | ------------------------------------------------------------ |
+| Operator | Data Entry      | CSV upload, manual entry, view/edit today's batches          |
+| Engineer | SPC Analysis    | Control charts, capability analysis, trend charts, boxplots  |
+| Manager  | Dashboard       | KPI cards, out-of-spec banners, status table, trend expander |
+| Admin    | Data Management | Filter, edit, delete, export CSV, import CSV                 |
 
 ## Monitored Parameters
 
-| Parameter | Replicates | LSL | USL | Units |
-|-----------|-----------|-----|-----|-------|
-| Adhesion | 5 | 0.6 | 1.5 | N/mm |
-| Cohesion | 15 | 1000.0 | — | — |
-| Rolling Ball Tack | 8 | 10.0 | 50.0 | mm |
-| Liner Release | 10 | 5.0 | 20.0 | g/inch |
+| Parameter         | Replicates | LSL    | USL  | Units  |
+| ----------------- | ---------- | ------ | ---- | ------ |
+| Adhesion          | 5          | 0.6    | 1.5  | N/mm   |
+| Cohesion          | 15         | 1000.0 | —   | —     |
+| Rolling Ball Tack | 8          | 10.0   | 50.0 | mm     |
+| Liner Release     | 10         | 5.0    | 20.0 | g/inch |
 
 ## Architecture
 
