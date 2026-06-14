@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import math
+from datetime import datetime
 
 from data_access.base import DataRepository
 from spc_engine.control_limits import compute_xbar_r
@@ -12,6 +13,8 @@ from visualization.boxplot import build_boxplot_chart
 from visualization.run_chart import build_run_chart
 from visualization.moving_range import build_moving_range_chart
 from visualization.rolling_ppk import build_rolling_ppk_chart
+from reports.pptx_generator import build_report
+from reports.narrative import build_summary
 
 
 def _ppk_status(ppk: float) -> tuple[str, str, str]:
@@ -24,6 +27,86 @@ def _ppk_status(ppk: float) -> tuple[str, str, str]:
         return ("🟡", "Marginal", "#FF9800")
     else:
         return ("🔴", "Not capable", "#f44336")
+
+
+def _render_export_tab(df, selected_formula, selected_param,
+                       limits, violations, cap, lsl, usl, has_lsl, has_usl,
+                       dates, batch_ids):
+    """Render the Export Report tab: generate PPTX and offer download."""
+    st.subheader("📥 Export PowerPoint Report")
+
+    st.caption(
+        "Generate a 5-slide PowerPoint deck with SPC charts, capability metrics, "
+        "and an executive summary for the currently selected formula/parameter."
+    )
+
+    if st.button("🟦 Generate PowerPoint", type="primary", key="gen_pptx"):
+        target = (lsl + usl) / 2 if (has_lsl and has_usl) else None
+
+        # Build the three chart figures
+        fig_xbar = build_xbar_r_chart(
+            limits, violations,
+            f"{selected_formula} — {selected_param}", batch_ids,
+        )
+        fig_cap = build_capability_chart(
+            limits["xbar"], lsl, usl, target,
+            f"{selected_formula} — {selected_param}",
+        )
+        fig_ppk = build_rolling_ppk_chart(
+            df, f"{selected_formula} — {selected_param}",
+            lsl if has_lsl else None, usl if has_usl else None,
+        )
+
+        # Build narrative
+        summary = build_summary(
+            cap=cap, violations=violations, limits=limits,
+            formula=selected_formula, parameter=selected_param,
+            date_range=(dates[0], dates[-1]),
+            n_batches=len(df),
+            batch_ids=batch_ids, dates=dates,
+        )
+
+        # Build metadata
+        metadata = {
+            "formula": selected_formula,
+            "parameter": selected_param,
+            "date_range": (dates[0], dates[-1]),
+            "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "baseline_n": limits["baseline_n"],
+        }
+
+        # Generate PPTX
+        buf = build_report(
+            fig_xbar=fig_xbar,
+            fig_capability=fig_cap,
+            fig_rolling_ppk=fig_ppk,
+            summary=summary,
+            metadata=metadata,
+            cap=cap,
+            n_batches=len(df),
+        )
+
+        st.session_state["pptx_bytes"] = buf.getvalue()
+        st.session_state["pptx_filename"] = (
+            f"SPC_Report_{selected_formula}_{selected_param}_"
+            f"{dates[-1]}.pptx"
+        )
+        st.session_state["pptx_generated"] = True
+
+    # Show download button if generated
+    if st.session_state.get("pptx_generated"):
+        emoji, label, _ = _ppk_status(cap["Ppk"])
+        st.success(
+            f"Report ready — {selected_formula} / {selected_param}, "
+            f"{len(df)} batches, {emoji} {label} (Ppk = {cap['Ppk']:.2f})"
+        )
+        st.download_button(
+            label="⬇️ Download Report",
+            data=st.session_state["pptx_bytes"],
+            file_name=st.session_state["pptx_filename"],
+            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            key="dl_pptx",
+        )
 
 
 def render_spc_analysis(repo: DataRepository, default_param: str | None = None):
@@ -114,10 +197,14 @@ def render_spc_analysis(repo: DataRepository, default_param: str | None = None):
         st.warning(f"⚠️ {len(violations)} out-of-control signal(s) detected — check X-bar & R tab for details")
 
     # --- Chart Tabs ---
-    tab1, tab2, tab3, tab4 = st.tabs(["X-bar & R", "Run Chart", "Moving Range", "Rolling Ppk"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["X-bar & R", "Run Chart", "Moving Range", "Rolling Ppk", "📥 Export Report"])
 
     with tab1:
         st.subheader("Control Limits")
+        st.caption(
+            f"Limits frozen from the first **{limits['baseline_n']}** batch(es) "
+            f"(baseline window). Newer points are judged against these limits."
+        )
         c1, c2, c3, c4, c5 = st.columns(5)
         c1.metric("LCLₓ", f"{limits['LCLx']:.3f}")
         c2.metric("X̅̅", f"{limits['Xbarbar']:.3f}")
@@ -154,6 +241,13 @@ def render_spc_analysis(repo: DataRepository, default_param: str | None = None):
                                             lsl if has_lsl else None,
                                             usl if has_usl else None)
         st.plotly_chart(fig_rppk, use_container_width=True)
+
+    with tab5:
+        _render_export_tab(
+            df, selected_formula, selected_param,
+            limits, violations, cap, lsl, usl, has_lsl, has_usl,
+            dates, batch_ids,
+        )
 
     st.divider()
 
