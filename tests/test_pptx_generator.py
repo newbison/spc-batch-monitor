@@ -17,6 +17,18 @@ def test_fig_to_image_returns_bytes():
     assert img_bytes[:4] == b'\x89PNG'
 
 
+def test_fig_to_image_handles_html_entities():
+    """Verify _fig_to_image sanitizes HTML entities like &mdash; that break kaleido."""
+    import plotly.graph_objects as go
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=[1, 2], y=[1, 2]))
+    # &mdash; causes kaleido error code 525 if not sanitized
+    fig.update_layout(title="Test &mdash; Chart")
+    img_bytes = _fig_to_image(fig, width=600, height=300)
+    assert isinstance(img_bytes, bytes)
+    assert img_bytes[:4] == b'\x89PNG'
+
+
 def test_build_report_returns_bytesio():
     """Verify build_report returns a BytesIO containing a valid PPTX."""
     import plotly.graph_objects as go

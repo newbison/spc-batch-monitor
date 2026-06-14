@@ -28,7 +28,27 @@ FONT_FAMILY = "Calibri"
 
 
 def _fig_to_image(fig, width: int = 1200, height: int = 600) -> bytes:
-    """Render a Plotly Figure to PNG bytes via kaleido."""
+    """Render a Plotly Figure to PNG bytes via kaleido.
+
+    Sanitizes HTML entities (e.g. &mdash;) in titles because kaleido's
+    headless plotly.js renderer rejects them (error code 525). The browser
+    handles these fine, so the visualization modules use them — but for
+    headless rendering we convert to Unicode equivalents.
+    """
+    import copy
+    import html
+
+    fig = copy.deepcopy(fig)
+    title_obj = fig.layout.title
+    if title_obj and title_obj.text:
+        # Decode HTML entities (&mdash; → —, &amp; → &, etc.)
+        decoded = html.unescape(title_obj.text)
+        if decoded != title_obj.text:
+            fig.update_layout(title=dict(
+                text=decoded,
+                font=title_obj.font,
+            ))
+
     return fig.to_image(format="png", width=width, height=height, scale=2)
 
 
