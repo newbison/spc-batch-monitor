@@ -33,7 +33,13 @@ CUSTOM_CSS = """
     }
     section[data-testid="stSidebar"] .stSelectbox label,
     section[data-testid="stSidebar"] .stRadio label {
-        font-size: 0.8rem; color: #D4C4B0 !important; font-weight: 600;
+        font-size: 1.1rem; color: #FFFFFF !important; font-weight: 700;
+    }
+    section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
+        font-size: 1.15rem; color: #FFFFFF !important; font-weight: 700;
+    }
+    section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:hover {
+        color: #F0E6D8 !important;
     }
     section[data-testid="stSidebar"] .sidebar-header {
         background: linear-gradient(180deg, #4A3520, #3B2A1A);
