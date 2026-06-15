@@ -27,30 +27,13 @@ CUSTOM_CSS = """
         background: #3B2A1A;
     }
     section[data-testid="stSidebar"] > div:first-child {padding-top: 0;}
-    /* Force all sidebar text white & large */
-    section[data-testid="stSidebar"],
-    section[data-testid="stSidebar"] * {
-        color: #FFFFFF !important;
-    }
-    section[data-testid="stSidebar"] .stSelectbox label,
-    section[data-testid="stSidebar"] .stRadio label,
-    section[data-testid="stSidebar"] .stRadio p,
-    section[data-testid="stSidebar"] .stRadio span,
-    section[data-testid="stSidebar"] [data-baseweb="radio"] label,
-    section[data-testid="stSidebar"] [data-baseweb="radio"] span,
-    section[data-testid="stSidebar"] [data-baseweb="radio"] p {
-        font-size: 1.15rem !important;
-        color: #FFFFFF !important;
-        font-weight: 700 !important;
-    }
-    section[data-testid="stSidebar"] [data-baseweb="radio"] [class*="st-"] {
-        color: #FFFFFF !important;
-        font-size: 1.15rem !important;
-    }
-    /* Sidebar captions keep muted tone */
+    section[data-testid="stSidebar"] label,
     section[data-testid="stSidebar"] .stCaption {
         color: #D4C4B0 !important;
-        font-size: 0.8rem !important;
+    }
+    section[data-testid="stSidebar"] .stSelectbox label,
+    section[data-testid="stSidebar"] .stRadio label {
+        font-size: 0.8rem; color: #D4C4B0 !important; font-weight: 600;
     }
     section[data-testid="stSidebar"] .sidebar-header {
         background: linear-gradient(180deg, #4A3520, #3B2A1A);
@@ -187,14 +170,14 @@ def main():
 
     role, page, param = render_sidebar(st.session_state.repo)
 
-    if page == "DOE":
-        render_doe_page(st.session_state.repo)
-
-    elif role == "Operator" and page == "Data Entry":
+    if role == "Operator" and page == "Data Entry":
         render_data_entry(st.session_state.repo)
 
     elif role == "Engineer" and page == "SPC Analysis":
         render_spc_analysis(st.session_state.repo, param)
+
+    elif role == "Engineer" and page == "DOE":
+        render_doe_page(st.session_state.repo)
 
     elif role == "Manager" and page == "Dashboard":
         render_dashboard(st.session_state.repo)
