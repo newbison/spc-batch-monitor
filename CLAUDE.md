@@ -2,12 +2,13 @@
 
 ## Overview
 
-A Streamlit web app for SPC monitoring of batch coating processes. Monitors 4 parameters (adhesion, cohesion, rolling_ball_tack, liner_release) with variable subgroup sizes (5–15 replicates). Multi-role support: operator data entry, engineer SPC analysis, manager dashboards, admin data management.
+A Streamlit web app for SPC monitoring of batch coating processes and DOE (Design of Experiments). SPC monitors 4 parameters (adhesion, cohesion, rolling_ball_tack, liner_release) with variable subgroup sizes (5–15 replicates). DOE supports full/fractional factorial and Box-Behnken designs with RSM analysis and multi-response desirability optimization. Multi-role support: operator data entry, engineer SPC analysis + DOE, manager dashboards, admin data management.
 
 ## Tech Stack
 
 - **Frontend**: Streamlit (Python)
 - **Charts**: Plotly
+- **DOE**: pyDOE2 (design matrices), statsmodels (RSM regression), scipy (optimization)
 - **Data storage**: SQLite (via repository pattern; swappable to PostgreSQL later)
 - **Auth**: Simple role-based dropdown (operator / engineer / manager / admin)
 
@@ -44,6 +45,15 @@ SPC/
 │   ├── control_limits.py        # X-bar & R limits (dynamic n via NaN detection)
 │   ├── capability.py            # Pp, Ppk, PPM (one-sided spec: NaN = no limit)
 │   └── rules.py                 # Western Electric rules 1, 2, 4, trending
+├── doe/
+│   ├── __init__.py              # Package init, public API re-exports
+│   ├── designs.py               # Full/fractional factorial + Box-Behnken via pyDOE2
+│   ├── analysis.py              # Linear regression + RSM via statsmodels, curvature test
+│   ├── optimization.py          # Derringer-Suich desirability, scipy multi-start optimizer
+│   └── persistence.py           # SQLite CRUD for DOE sessions (JSON columns)
+├── reports/
+│   ├── narrative.py             # SPC narrative report generator
+│   └── pptx_generator.py        # PPTX export for SPC charts
 ├── visualization/
 │   ├── _theme.py                # Shared Plotly defaults (industrial warm palette)
 │   ├── control_charts.py        # X-bar & R chart (paired subplots)
@@ -54,11 +64,12 @@ SPC/
 │   └── rolling_ppk.py           # Sliding-window Ppk with zone coloring
 ├── ui/
 │   ├── common/
-│   │   └── sidebar.py           # Role selector, data summary, param sync
+│   │   └── sidebar.py           # Role selector, data summary, param sync, page switch
 │   ├── operator/
 │   │   └── data_entry.py        # CSV Upload, Manual Entry, View & Edit tabs
 │   ├── engineer/
-│   │   └── chart_view.py        # Formula+param selectors, 4 chart tabs, capability
+│   │   ├── chart_view.py        # Formula+param selectors, 4 chart tabs, capability
+│   │   └── doe_view.py          # DOE wizard: define→design→capture→analyze→optimize
 │   ├── manager/
 │   │   └── dashboard.py         # KPI cards, status table, trend expander
 │   └── admin/
@@ -69,7 +80,11 @@ SPC/
     ├── test_capability.py
     ├── test_validation.py
     ├── test_sqlite_repository.py
-    └── test_integration.py      # 38 tests total
+    ├── test_integration.py
+    ├── test_doe_designs.py
+    ├── test_doe_analysis.py
+    ├── test_doe_optimization.py
+    └── test_doe_persistence.py   # 73 tests total
 ```
 
 ## Current Scope
@@ -107,8 +122,9 @@ date,batch_id,formula,parameter,lower_spec,upper_spec,rep1,...,rep15
 ### Screens
 1. **Operator: Data Entry** — 3 modes: CSV Upload (validated + deduped), Manual Entry, View & Edit (today's batches only)
 2. **Engineer: SPC Analysis** — formula+param selectors side-by-side, all-formulas out-of-spec banner, 4 chart tabs (X-bar & R, Run, Moving Range, Rolling Ppk), capability KPIs, histogram, boxplot, raw data
-3. **Manager: Dashboard** — KPI row, out-of-spec/marginal banners, status summary cards (🟢/🟡/🔴/⚪), full status table, trend analysis expander
-4. **Admin: Data Management** — filterable data browser (date, formula, param, search), inline edit, row/batch delete, CSV export, CSV import
+3. **Engineer: DOE** — wizard workflow: Landing → Define Factors & Responses → Generate Design Matrix → Capture Results → Analyze (regression, RSM, main effects, Pareto, contour/surface plots) → Optimize (Derringer-Suich desirability). Supports promote-to-full-factorial and session persistence.
+4. **Manager: Dashboard** — KPI row, out-of-spec/marginal banners, status summary cards (🟢/🟡/🔴/⚪), full status table, trend analysis expander
+5. **Admin: Data Management** — filterable data browser (date, formula, param, search), inline edit, row/batch delete, CSV export, CSV import
 
 ## Key Design Decisions
 
@@ -120,3 +136,8 @@ date,batch_id,formula,parameter,lower_spec,upper_spec,rep1,...,rep15
 6. **Specs travel with data** — each row has `lower_spec`/`upper_spec`. Different formulas can have different limits.
 7. **Upload versioning** — every uploaded CSV archived to `data/uploads/` with timestamp prefix.
 8. **Pp/Ppk uses overall σ** (all X-bar values across batches).
+9. **DOE engine is pure Python** — doe/ modules take DataFrames/arrays, return dicts. No Streamlit imports.
+10. **pyDOE2 for design matrices** — patched `import imp` → `import importlib` for Python 3.12+ compat.
+11. **statsmodels for RSM** — second-order regression with coded variables; ANOVA + significance via t-tests.
+12. **Derringer-Suich desirability** — individual desirability per response (nominal-the-best, larger-the-better, smaller-the-better), geometric mean overall desirability, scipy multi-start optimization.
+13. **DOE sessions persisted in SQLite** — separate `doe_sessions` table with JSON columns for factors, responses, design, results.

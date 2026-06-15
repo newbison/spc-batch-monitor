@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-06-15
+
+- **DOE (Design of Experiments) page** — full wizard workflow for Engineer role
+  - `doe/designs.py`: full factorial, fractional factorial (2^(k-p) Resolution IV), Box-Behnken design generation via pyDOE2, with center points and coded ↔ real unit conversion
+  - `doe/analysis.py`: OLS linear regression + RSM second-order model via statsmodels, ANOVA, Pareto chart data, curvature test (factorial vs center-point comparison)
+  - `doe/optimization.py`: Derringer-Suich desirability function (nominal/larger/smaller-the-best), geometric mean overall desirability, scipy.optimize multi-start L-BFGS-B optimization with response bounds
+  - `doe/persistence.py`: SQLite CRUD for DOE sessions with JSON columns (factors, responses, design matrix, analysis results)
+  - `ui/engineer/doe_view.py`: Streamlit wizard — Landing, Define Factors & Responses, Generate Design Matrix, Capture Results, Analyze (regression summary, main effects, Pareto, contour/surface plots), Optimize (desirability settings, multi-start search, optimal conditions)
+  - Sidebar: Engineer role now has SPC Analysis + DOE page selector
+  - Promote-to-full-factorial bridge for fractional designs
+  - 24 new tests (7 designs + 6 analysis + 6 optimization + 5 persistence), all 73 tests passing
+- Patched pyDOE2 `import imp` → `import importlib` for Python 3.12+ compatibility
+- Extended SPC constants table (n=2..25) in config.py
+
 ## 2026-05-16
 
 - SQLite data storage (SqliteRepository) replacing single-file CSV as source of truth

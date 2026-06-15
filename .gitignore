@@ -2,6 +2,7 @@ __pycache__/
 .pytest_cache/
 .superpowers/
 .claude/
+.workbuddy/
 data/uploads/*.csv
 *.pyc
 node_modules/
