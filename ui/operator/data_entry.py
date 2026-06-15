@@ -112,6 +112,10 @@ def _render_csv_upload(repo: DataRepository):
             st.write("Your columns:", list(new_df.columns))
             return
 
+        extra = set(new_df.columns) - required_cols
+        if extra:
+            st.warning(f"Unexpected columns will be ignored: {', '.join(sorted(extra))}")
+
         st.write(f"**{len(new_df)} rows** | {new_df['formula'].nunique()} formula(s) "
                  f"| {n} replicates per measurement")
 

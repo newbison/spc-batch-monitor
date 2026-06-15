@@ -3,7 +3,7 @@ import numpy as np
 from pathlib import Path
 import tempfile
 
-from data_access.repository import CsvRepository
+from data_access.sqlite_repository import SqliteRepository
 from spc_engine.control_limits import compute_xbar_r
 from spc_engine.rules import check_rules
 from spc_engine.capability import compute_capability
@@ -12,8 +12,8 @@ from spc_engine.capability import compute_capability
 def test_full_pipeline_n10():
     """Full SPC pipeline with n=10 replicates (coating process)."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        csv_path = Path(tmpdir) / "test.csv"
-        repo = CsvRepository(csv_path)
+        db_path = Path(tmpdir) / "test.db"
+        repo = SqliteRepository(db_path, auto_migrate=False)
 
         np.random.seed(99)
         for i in range(20):
@@ -47,8 +47,6 @@ def test_full_pipeline_n10():
 
 def test_sqlite_full_pipeline():
     """Full SPC pipeline with SqliteRepository."""
-    from data_access.sqlite_repository import SqliteRepository
-
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = Path(tmpdir) / "test.db"
         repo = SqliteRepository(db_path, auto_migrate=False)

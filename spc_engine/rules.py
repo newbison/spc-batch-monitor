@@ -49,4 +49,33 @@ def check_rules(xbar: np.ndarray, ucl: float, lcl: float, cl: float) -> list[dic
                 "description": "6 consecutive points trending down",
             })
 
-    return violations
+    return _dedup_violations(violations)
+
+
+def _dedup_violations(violations: list[dict]) -> list[dict]:
+    """Merge overlapping same-rule violations reported at nearby indices.
+
+    Rule 2 (and similar sliding-window rules) can flag the same underlying
+    shift multiple times as the window advances by one.  We collapse any
+    consecutive same-rule violations whose batch indices are within a
+    tolerance of 2 into a single violation (keeping the earliest).
+    """
+    if not violations:
+        return violations
+
+    deduped = []
+    prev = None
+    TOLERANCE = 2
+
+    for v in violations:
+        if (
+            prev is not None
+            and v["rule"] == prev["rule"]
+            and abs(v["batch_index"] - prev["batch_index"]) <= TOLERANCE
+        ):
+            # Overlapping — skip this duplicate
+            continue
+        deduped.append(v)
+        prev = v
+
+    return deduped

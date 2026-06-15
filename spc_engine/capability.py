@@ -3,6 +3,12 @@ import math
 from scipy import stats
 
 
+# NOTE: σ is computed across batch means (between-batch variation), not
+# pooled individual measurements. This underrepresents total variation and
+# overstates Ppk. Intentional for now — see rolling_ppk.py for the same
+# convention. Revisit before reporting capability externally.
+
+
 def compute_capability(xbar: np.ndarray, lsl: float, usl: float) -> dict:
     mean = float(np.mean(xbar))
     sigma_overall = float(np.std(xbar, ddof=1))

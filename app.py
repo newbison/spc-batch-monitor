@@ -6,6 +6,7 @@ from ui.operator.data_entry import render_data_entry
 from ui.engineer.chart_view import render_spc_analysis
 from ui.manager.dashboard import render_dashboard
 from ui.admin.data_manager import render_data_manager
+from ui.engineer.doe_view import render_doe_page
 
 CUSTOM_CSS = """
 <style>
@@ -174,6 +175,9 @@ def main():
 
     elif role == "Engineer" and page == "SPC Analysis":
         render_spc_analysis(st.session_state.repo, param)
+
+    elif role == "Engineer" and page == "DOE":
+        render_doe_page(st.session_state.repo)
 
     elif role == "Manager" and page == "Dashboard":
         render_dashboard(st.session_state.repo)

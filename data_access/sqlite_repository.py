@@ -69,7 +69,7 @@ class SqliteRepository(DataRepository):
         try:
             yield conn
             conn.commit()
-        except:
+        except Exception:
             conn.rollback()
             raise
         finally:

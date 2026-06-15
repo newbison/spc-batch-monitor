@@ -30,7 +30,7 @@ def render_sidebar(repo: DataRepository) -> tuple[str, str, str | None]:
         if role == "Operator":
             page = st.radio("Page", ["Data Entry"], label_visibility="collapsed")
         elif role == "Engineer":
-            page = st.radio("Page", ["SPC Analysis"], label_visibility="collapsed")
+            page = st.radio("Page", ["SPC Analysis", "DOE"], label_visibility="collapsed")
         elif role == "Manager":
             page = st.radio("Page", ["Dashboard"], label_visibility="collapsed")
         elif role == "Admin":
