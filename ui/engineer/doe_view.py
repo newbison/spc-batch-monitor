@@ -164,7 +164,7 @@ def _render_define(doe_repo: DoeRepository):
     factors = session.get("factors_json", [])
 
     if not factors:
-        factors = [{"name": "", "type": "continuous", "low": 0, "high": 100}]
+        factors = [{"name": "", "type": "continuous", "low": 0.0, "high": 100.0}]
 
     edited_factors = st.data_editor(
         pd.DataFrame(factors),
@@ -176,8 +176,8 @@ def _render_define(doe_repo: DoeRepository):
             "type": st.column_config.SelectboxColumn(
                 "Type", options=["continuous", "categorical"], required=True
             ),
-            "low": st.column_config.NumberColumn("Low", required=True),
-            "high": st.column_config.NumberColumn("High", required=True),
+            "low": st.column_config.NumberColumn("Low", required=True, step=0.01, format="%.4f"),
+            "high": st.column_config.NumberColumn("High", required=True, step=0.01, format="%.4f"),
         },
         hide_index=True,
     )
@@ -188,7 +188,7 @@ def _render_define(doe_repo: DoeRepository):
     responses = session.get("responses_json", [])
 
     if not responses:
-        responses = [{"name": "", "goal": "maximize", "target": None, "low": 0, "high": 100}]
+        responses = [{"name": "", "goal": "maximize", "target": None, "low": 0.0, "high": 100.0}]
 
     edited_responses = st.data_editor(
         pd.DataFrame(responses),
@@ -200,9 +200,9 @@ def _render_define(doe_repo: DoeRepository):
             "goal": st.column_config.SelectboxColumn(
                 "Goal", options=["maximize", "minimize", "target"], required=True
             ),
-            "target": st.column_config.NumberColumn("Target (for 'target' goal only)"),
-            "low": st.column_config.NumberColumn("Low Bound", required=True),
-            "high": st.column_config.NumberColumn("High Bound", required=True),
+            "target": st.column_config.NumberColumn("Target (for 'target' goal only)", step=0.01, format="%.4f"),
+            "low": st.column_config.NumberColumn("Low Bound", required=True, step=0.01, format="%.4f"),
+            "high": st.column_config.NumberColumn("High Bound", required=True, step=0.01, format="%.4f"),
         },
         hide_index=True,
     )
@@ -661,14 +661,15 @@ def _render_optimize(doe_repo: DoeRepository):
             )
             r["goal"] = goal
         with c3:
-            low = st.number_input("Low", value=r["low"], key=f"doe_low_{r['name']}")
+            low = st.number_input("Low", value=float(r["low"]), step=0.01, format="%.4f", key=f"doe_low_{r['name']}")
             r["low"] = low
         with c4:
-            high = st.number_input("High", value=r["high"], key=f"doe_high_{r['name']}")
+            high = st.number_input("High", value=float(r["high"]), step=0.01, format="%.4f", key=f"doe_high_{r['name']}")
             r["high"] = high
         if r["goal"] == "target":
             r["target"] = st.number_input(
-                "Target", value=r.get("target") or r["low"],
+                "Target", value=float(r.get("target") or r["low"]),
+                step=0.01, format="%.4f",
                 key=f"doe_target_{r['name']}",
             )
         goal_edits.append(r)
