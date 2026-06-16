@@ -1,12 +1,13 @@
 """Design matrix generation for DOE.
 
-Wraps pyDOE2 to produce coded design matrices (-1, 0, +1).
+Generates coded design matrices (-1, 0, +1) using self-contained
+factorial generators (no pyDOE2 dependency).
 Pure Python — no Streamlit imports.
 """
 
 import numpy as np
 import pandas as pd
-from pyDOE2 import fullfact, fracfact, bbdesign
+from doe._factorial import fullfact, fracfact, bbdesign
 
 
 def generate_full_factorial(factors: list[dict], n_center: int = 3) -> pd.DataFrame:
