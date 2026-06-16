@@ -10,6 +10,67 @@ import statsmodels.api as sm
 from scipy import stats
 
 
+def _is_center_row(design: pd.DataFrame, factor_names: list[str],
+                   tol: float = 0.01) -> np.ndarray:
+    """Return boolean array: True for rows where ALL factors are within `tol` of 0.
+
+    Shared helper used by curvature test, has_curvature, and the UI — single
+    source of truth for center-point detection.
+    """
+    is_center = np.ones(len(design), dtype=bool)
+    for f in factor_names:
+        is_center &= np.abs(design[f].values) < tol
+    return is_center
+
+
+def _validate_inputs(design: pd.DataFrame, results: pd.DataFrame,
+                     response_name: str, factor_names: list[str]):
+    """Guard: check response exists, no NaN/Inf, merge on run."""
+    if response_name not in results.columns:
+        raise ValueError(
+            f"Response '{response_name}' not found in results columns: "
+            f"{list(results.columns)}"
+        )
+    if "run" not in design.columns:
+        raise ValueError("design DataFrame must have a 'run' column")
+    if "run" not in results.columns:
+        raise ValueError("results DataFrame must have a 'run' column")
+
+
+def _merge_and_validate(design: pd.DataFrame, results: pd.DataFrame,
+                        response_name: str, factor_names: list[str]
+                        ) -> tuple[pd.DataFrame, np.ndarray]:
+    """Merge design and results on 'run', validate, return (merged_design, y)."""
+    _validate_inputs(design, results, response_name, factor_names)
+
+    merged = design.merge(results[["run", response_name]], on="run", how="inner")
+    if len(merged) == 0:
+        raise ValueError("No matching 'run' values between design and results. "
+                         "Check that run numbers align.")
+
+    # Check for NaN/Inf in response
+    y = merged[response_name].values.astype(float)
+    if not np.isfinite(y).all():
+        raise ValueError(
+            f"Response '{response_name}' contains NaN or Inf values. "
+            "Clean data before analysis."
+        )
+
+    return merged, y
+
+
+def _check_parameter_count(n_obs: int, n_params: int):
+    """Raise ValueError if model has more parameters than observations."""
+    if n_params > n_obs:
+        raise ValueError(
+            f"Model has {n_params} parameters — more parameters than "
+            f"observations ({n_obs}). "
+            "This produces NaN p-values and R²=1.0. "
+            "For screening designs with ≥4 factors, use a main-effects-only "
+            "model or increase the number of runs."
+        )
+
+
 def fit_linear(factors: list[dict], design: pd.DataFrame, results: pd.DataFrame,
                response_name: str, alpha: float = 0.05) -> dict:
     """Fit a linear model with main effects and all 2-way interactions.
@@ -17,7 +78,7 @@ def fit_linear(factors: list[dict], design: pd.DataFrame, results: pd.DataFrame,
     Parameters
     ----------
     factors : list of dict
-        Factor definitions (name, type, low, high).
+        Each dict has keys: name, type ('continuous' or 'categorical'), low, high.
     design : pd.DataFrame
         Coded design matrix (columns: run, <factor_names>).
     results : pd.DataFrame
@@ -34,38 +95,43 @@ def fit_linear(factors: list[dict], design: pd.DataFrame, results: pd.DataFrame,
         r_squared: float
         r_squared_adj: float
         model_p_value: float
+        rmse: float — root mean squared error (for prediction intervals)
     """
     factor_names = [f["name"] for f in factors]
+
+    merged, y = _merge_and_validate(design, results, response_name, factor_names)
 
     # Build X matrix: intercept + main effects + 2-way interactions
     X_cols = ["Intercept"] + factor_names
     X_cols += [f"{a}*{b}" for a, b in _pairwise(factor_names)]
 
-    X = np.column_stack([
-        np.ones(len(design)),  # intercept
-        *[design[f].values for f in factor_names],  # main effects
-        *[(design[a].values * design[b].values) for a, b in _pairwise(factor_names)],  # interactions
-    ])
+    _check_parameter_count(len(merged), len(X_cols))
 
-    y = results[response_name].values
+    X = np.column_stack([
+        np.ones(len(merged)),  # intercept
+        *[merged[f].values for f in factor_names],  # main effects
+        *[(merged[a].values * merged[b].values) for a, b in _pairwise(factor_names)],  # interactions
+    ])
 
     ols = sm.OLS(y, X).fit()
 
     coefficients = []
     for i, term in enumerate(X_cols):
+        pv = float(ols.pvalues[i])
         coefficients.append({
             "term": term,
             "estimate": float(ols.params[i]),
-            "std_err": float(ols.bse[i]),
-            "p_value": float(ols.pvalues[i]),
-            "significant": bool(ols.pvalues[i] < alpha),
+            "std_err": float(ols.bse[i]) if np.isfinite(ols.bse[i]) else None,
+            "p_value": pv if np.isfinite(pv) else None,
+            "significant": bool(pv < alpha) if np.isfinite(pv) else False,
         })
 
     return {
         "coefficients": coefficients,
-        "r_squared": float(ols.rsquared),
-        "r_squared_adj": float(ols.rsquared_adj),
-        "model_p_value": float(ols.f_pvalue),
+        "r_squared": float(ols.rsquared) if np.isfinite(ols.rsquared) else None,
+        "r_squared_adj": float(ols.rsquared_adj) if np.isfinite(ols.rsquared_adj) else None,
+        "model_p_value": float(ols.f_pvalue) if np.isfinite(ols.f_pvalue) else None,
+        "rmse": float(np.sqrt(ols.mse_resid)) if hasattr(ols, 'mse_resid') and np.isfinite(ols.mse_resid) else None,
     }
 
 
@@ -90,48 +156,53 @@ def fit_rsm(factors: list[dict], design: pd.DataFrame, results: pd.DataFrame,
     -------
     dict with keys:
         coefficients, r_squared, r_squared_adj, model_p_value,
-        curvature_p_value, has_curvature
+        curvature_p_value, has_curvature, rmse
     """
     factor_names = [f["name"] for f in factors]
+
+    merged, y = _merge_and_validate(design, results, response_name, factor_names)
 
     # Build X: intercept + main + 2-way interactions + quadratic
     X_cols = ["Intercept"] + factor_names
     X_cols += [f"{a}*{b}" for a, b in _pairwise(factor_names)]
     X_cols += [f"{f}^2" for f in factor_names]
 
-    X_parts = [np.ones(len(design))]
+    _check_parameter_count(len(merged), len(X_cols))
+
+    X_parts = [np.ones(len(merged))]
     for f in factor_names:
-        X_parts.append(design[f].values)
+        X_parts.append(merged[f].values)
     for a, b in _pairwise(factor_names):
-        X_parts.append(design[a].values * design[b].values)
+        X_parts.append(merged[a].values * merged[b].values)
     for f in factor_names:
-        X_parts.append(design[f].values ** 2)
+        X_parts.append(merged[f].values ** 2)
 
     X = np.column_stack(X_parts)
-    y = results[response_name].values
 
     ols = sm.OLS(y, X).fit()
 
     coefficients = []
     for i, term in enumerate(X_cols):
+        pv = float(ols.pvalues[i])
         coefficients.append({
             "term": term,
             "estimate": float(ols.params[i]),
-            "std_err": float(ols.bse[i]),
-            "p_value": float(ols.pvalues[i]),
-            "significant": bool(ols.pvalues[i] < alpha),
+            "std_err": float(ols.bse[i]) if np.isfinite(ols.bse[i]) else None,
+            "p_value": pv if np.isfinite(pv) else None,
+            "significant": bool(pv < alpha) if np.isfinite(pv) else False,
         })
 
     # Curvature test: center points vs factorial points
-    curvature_p, has_curv = _curvature_test(design, y, factor_names)
+    curvature_p, has_curv = _curvature_test(merged, y, factor_names)
 
     return {
         "coefficients": coefficients,
-        "r_squared": float(ols.rsquared),
-        "r_squared_adj": float(ols.rsquared_adj),
-        "model_p_value": float(ols.f_pvalue),
+        "r_squared": float(ols.rsquared) if np.isfinite(ols.rsquared) else None,
+        "r_squared_adj": float(ols.rsquared_adj) if np.isfinite(ols.rsquared_adj) else None,
+        "model_p_value": float(ols.f_pvalue) if np.isfinite(ols.f_pvalue) else None,
         "curvature_p_value": curvature_p,
         "has_curvature": has_curv,
+        "rmse": float(np.sqrt(ols.mse_resid)) if hasattr(ols, 'mse_resid') and np.isfinite(ols.mse_resid) else None,
     }
 
 
@@ -167,11 +238,9 @@ def _curvature_test(design: pd.DataFrame, y: np.ndarray,
     """Perform curvature test using center vs factorial points.
 
     Returns (p_value, has_curvature).
+    Uses shared _is_center_row helper.
     """
-    # More robust: check each row
-    is_center = np.ones(len(design), dtype=bool)
-    for f in factor_names:
-        is_center &= np.abs(design[f].values) < 0.01
+    is_center = _is_center_row(design, factor_names)
 
     center_y = y[is_center]
     factorial_y = y[~is_center]

@@ -1,6 +1,7 @@
+import pytest
 import numpy as np
 import pandas as pd
-from doe.analysis import fit_linear, fit_rsm, has_curvature
+from doe.analysis import fit_linear, fit_rsm, has_curvature, predict_from_model, _is_center_row
 
 
 def test_fit_linear_perfect_model():
@@ -127,3 +128,90 @@ def test_has_curvature_false():
     # Predicted center = mean of factorial = 17.5
     center_y = np.array([17, 18, 17.5], dtype=float)
     assert has_curvature(factorial_y, center_y) == False
+
+
+def test_fit_linear_missing_response():
+    """fit_linear raises ValueError when response_name not in results."""
+    factors = [{"name": "A", "type": "continuous", "low": 50, "high": 80}]
+    design = pd.DataFrame({"run": [1, 2], "A": [-1.0, 1.0]})
+    results = pd.DataFrame({"run": [1, 2], "wrong_name": [5.0, 7.0]})
+    with pytest.raises(ValueError, match="not found in results"):
+        fit_linear(factors, design, results, "Y")
+
+
+def test_fit_linear_nan_in_response():
+    """fit_linear raises ValueError when response contains NaN."""
+    factors = [{"name": "A", "type": "continuous", "low": 50, "high": 80}]
+    design = pd.DataFrame({"run": [1, 2], "A": [-1.0, 1.0]})
+    results = pd.DataFrame({"run": [1, 2], "Y": [5.0, float("nan")]})
+    with pytest.raises(ValueError, match="NaN or Inf"):
+        fit_linear(factors, design, results, "Y")
+
+
+def test_fit_linear_overparameterized():
+    """fit_linear raises ValueError when n_params > n_obs."""
+    factors = [{"name": f"F{i}", "type": "continuous", "low": 0, "high": 10} for i in range(5)]
+    # 5 factors -> 1 + 5 + 10 = 16 params, only 8 rows in fractional factorial
+    design = pd.DataFrame({
+        "run": list(range(1, 9)),
+        "F0": [-1, 1, -1, 1, -1, 1, -1, 1],
+        "F1": [-1, -1, 1, 1, -1, -1, 1, 1],
+        "F2": [-1, -1, -1, -1, 1, 1, 1, 1],
+        "F3": [1, -1, 1, -1, -1, 1, -1, 1],
+        "F4": [-1, 1, 1, -1, 1, -1, -1, 1],
+    })
+    results = pd.DataFrame({"run": list(range(1, 9)),
+                            "Y": [10.0, 12.0, 11.0, 13.0, 9.0, 14.0, 10.0, 15.0]})
+    with pytest.raises(ValueError, match="more parameters"):
+        fit_linear(factors, design, results, "Y")
+
+
+def test_fit_linear_merges_on_run():
+    """fit_linear merges on 'run' -- results in different order still works."""
+    factors = [{"name": "A", "type": "continuous", "low": 50, "high": 80}]
+    design = pd.DataFrame({"run": [2, 1], "A": [1.0, -1.0]})
+    # Results in opposite run order -- should still work after merge
+    results = pd.DataFrame({"run": [1, 2], "Y": [5.0, 7.0]})
+    # Y = 6 + 1*A -> run1 (A=-1): Y=5, run2 (A=1): Y=7
+    model = fit_linear(factors, design, results, "Y")
+    coefs = {c["term"]: c["estimate"] for c in model["coefficients"]}
+    assert abs(coefs["A"] - 1.0) < 0.5
+
+
+def test_predict_from_model_linear():
+    """predict_from_model recovers known linear model predictions."""
+    factors = [{"name": "A", "type": "continuous", "low": 50, "high": 80},
+               {"name": "B", "type": "continuous", "low": 100, "high": 200}]
+    model = {
+        "coefficients": [
+            {"term": "Intercept", "estimate": 10.0},
+            {"term": "A", "estimate": 2.0},
+            {"term": "B", "estimate": 3.0},
+            {"term": "A*B", "estimate": 1.5},
+        ],
+    }
+    # Y = 10 + 2*A + 3*B + 1.5*A*B
+    pred = predict_from_model(model, factors, {"A": 1.0, "B": -1.0})
+    assert abs(pred - (10 + 2 - 3 - 1.5)) < 0.01
+
+
+def test_predict_from_model_rsm():
+    """predict_from_model includes quadratic terms."""
+    factors = [{"name": "A", "type": "continuous", "low": 50, "high": 80}]
+    model = {
+        "coefficients": [
+            {"term": "Intercept", "estimate": 20.0},
+            {"term": "A", "estimate": 5.0},
+            {"term": "A^2", "estimate": 4.0},
+        ],
+    }
+    # Y = 20 + 5*A + 4*A^2; A=0.5 -> 20 + 2.5 + 1.0 = 23.5
+    pred = predict_from_model(model, factors, {"A": 0.5})
+    assert abs(pred - 23.5) < 0.01
+
+
+def test_is_center_row():
+    """_is_center_row identifies rows where all factors are near 0."""
+    design = pd.DataFrame({"A": [-1.0, 0.0, 1.0, 0.001], "B": [-1.0, 0.0, 0.0, 0.0]})
+    result = _is_center_row(design, ["A", "B"], tol=0.01)
+    assert result.tolist() == [False, True, False, True]  # row 4: A=0.001 < 0.01 -> True
