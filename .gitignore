@@ -3,6 +3,7 @@ __pycache__/
 .superpowers/
 .claude/
 .workbuddy/
+.worktrees/
 data/uploads/*.csv
 *.pyc
 node_modules/
