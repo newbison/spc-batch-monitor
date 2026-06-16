@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 from doe.designs import (
     generate_full_factorial,
     generate_fractional_factorial,
@@ -66,7 +67,7 @@ def test_box_behnken_3_factors():
         {"name": f"F{i}", "type": "continuous", "low": i*10, "high": i*10+10} for i in range(3)
     ]
     df = generate_box_behnken(factors)
-    assert len(df) == 15  # 12 edge + 3 center (bbdesign default n_center=0, we add 3)
+    assert len(df) == 15  # 12 edge + 3 center (bbdesign called with center=3)
     assert list(df.columns) == ["run", "F0", "F1", "F2"]
     # Center points exist
     center_rows = df[(df["F0"] == 0) & (df["F1"] == 0) & (df["F2"] == 0)]
@@ -82,7 +83,7 @@ def test_decode_to_actual():
     coded = pd.DataFrame({"run": [1, 2, 3], "speed": [-1, 0, 1], "supplier": [-1, 0, 1]})
     decoded = decode_to_actual(coded, factors)
     assert decoded["speed"].tolist() == [50, 65, 80]
-    assert decoded["supplier"].tolist() == ["Alpha", "Midpoint", "Beta"]
+    assert decoded["supplier"].tolist() == ["Alpha", "Alpha/Beta", "Beta"]
 
 
 def test_add_center_points():
@@ -97,3 +98,30 @@ def test_add_center_points():
     center_rows = result[(result["A"] == 0) & (result["B"] == 0)]
     assert len(center_rows) == 3
     assert result["run"].tolist() == [1, 2, 3, 4, 5, 6, 7]
+
+
+def test_fractional_factorial_5_factors_res_v():
+    """2^(5-1) Resolution V = 16 runs (half-fraction of 2^5)."""
+    factors = [{"name": f"F{i}", "type": "continuous", "low": 0, "high": 10} for i in range(5)]
+    df = generate_fractional_factorial(factors, resolution=5)
+    # Resolution V for 5 factors = 2^(5-1) = 16 runs
+    assert len(df) == 16
+
+
+def test_fractional_factorial_k_above_8_raises():
+    """k > 8 should raise NotImplementedError, not silently fall back."""
+    factors = [{"name": f"F{i}", "type": "continuous", "low": 0, "high": 10} for i in range(9)]
+    with pytest.raises(NotImplementedError):
+        generate_fractional_factorial(factors, resolution=4)
+
+
+def test_box_behnken_comment_is_accurate():
+    """Box-Behnken center points come from pyDOE2's bbdesign, not our add_center_points."""
+    factors = [
+        {"name": f"F{i}", "type": "continuous", "low": i*10, "high": i*10+10} for i in range(3)
+    ]
+    df = generate_box_behnken(factors, n_center=5)
+    # bbdesign(k=3, center=5) = 12 edge + 5 center = 17 runs
+    assert len(df) == 17
+    center_rows = df[(df["F0"] == 0) & (df["F1"] == 0) & (df["F2"] == 0)]
+    assert len(center_rows) == 5

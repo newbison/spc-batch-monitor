@@ -155,33 +155,59 @@ def _decode_value(coded_val: float, low, high, factor_type: str):
         if factor_type == "continuous":
             return (low + high) / 2
         else:
-            return "Midpoint"
+            return f"{low}/{high}"
 
 
 def _get_fractional_generators(k: int, resolution: int) -> str:
     """Return a fracfact generator string for k factors at given resolution.
 
     For k <= 3, returns full factorial (no aliasing needed).
-    For k = 4..11, returns standard Resolution IV/V generators.
+    For k = 4..7, returns standard generators keyed by (k, resolution).
+    For k >= 8, raises NotImplementedError.
     """
-    # Standard generators for 2^(k-p) designs
-    # fracfact takes: basic factors as single letters, added factors as generator strings
+    # Map: (k, resolution) -> generator string
+    # Resolution IV: main effects clear of 2-factor interactions
+    # Resolution V: main effects + 2-way interactions clear of each other
     generators_map = {
-        4: "a b c abc",           # 2^(4-1) Res IV: D = ABC
-        5: "a b c ab ac",         # 2^(5-2) Res IV
-        6: "a b c d ab ac",       # 2^(6-3) Res IV
-        7: "a b c d ab ac bc",    # 2^(7-4) Res IV
-        8: "a b c d ab ac bc abcd",  # 2^(8-4) Res IV
+        (4, 4): "a b c abc",            # 2^(4-1) Res IV: 8 runs, D=ABC
+        (4, 5): "a b c d",              # 2^4 full factorial: 16 runs
+        (5, 4): "a b c ab ac",          # 2^(5-2) Res IV: 8 runs
+        (5, 5): "a b c d abc",          # 2^(5-1) Res V: 16 runs, E=ABCD
+        (6, 4): "a b c d ab ac",        # 2^(6-2) Res IV: 16 runs (use 4 base)
+        (6, 5): "a b c d e abc",        # 2^(6-1) Res V: 32 runs, F=ABCDE
+        (7, 4): "a b c d ab ac bc",     # 2^(7-3) Res IV: 16 runs
+        (7, 5): "a b c d e f abc",      # 2^(7-1) Res V: 64 runs, G=ABCDEF
     }
 
     if k <= 3:
         # Full factorial for 3 or fewer factors
         return " ".join([chr(ord('a') + i) for i in range(k)])
 
-    if k in generators_map:
-        return generators_map[k]
+    key = (k, resolution)
+    if key in generators_map:
+        return generators_map[key]
 
-    # For k > 8, use a half-fraction approach
-    # Generate enough generators: for 2^(k-p) where p = ceil(k/2)
-    letters = [chr(ord('a') + i) for i in range(k)]
-    return " ".join(letters)
+    # Try closest available resolution
+    for res in sorted([4, 5], reverse=True):
+        if (k, res) in generators_map:
+            return generators_map[(k, res)]
+
+    raise NotImplementedError(
+        f"No fractional factorial generator available for k={k}. "
+        "Maximum supported is k=7."
+    )
+
+
+def _count_base_factors(generator_string: str) -> int:
+    """Count the number of base (single-letter) factors in a generator string."""
+    return sum(1 for token in generator_string.split() if len(token) == 1)
+
+
+def get_fractional_run_count(k: int, resolution: int) -> int:
+    """Return the expected number of runs for a fractional factorial design.
+
+    Can be called by the UI to display accurate run estimates before generation.
+    """
+    gen_str = _get_fractional_generators(k, resolution)
+    base_count = _count_base_factors(gen_str)
+    return 2 ** base_count
