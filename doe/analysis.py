@@ -14,7 +14,7 @@ def _is_center_row(design: pd.DataFrame, factor_names: list[str],
                    tol: float = 0.01) -> np.ndarray:
     """Return boolean array: True for rows where ALL factors are within `tol` of 0.
 
-    Shared helper used by curvature test, has_curvature, and the UI — single
+    Shared helper used by the internal curvature test — single
     source of truth for center-point detection.
     """
     is_center = np.ones(len(design), dtype=bool)
@@ -24,8 +24,8 @@ def _is_center_row(design: pd.DataFrame, factor_names: list[str],
 
 
 def _validate_inputs(design: pd.DataFrame, results: pd.DataFrame,
-                     response_name: str, factor_names: list[str]):
-    """Guard: check response exists, no NaN/Inf, merge on run."""
+                     response_name: str):
+    """Guard: check response_name exists in results, and both DataFrames have a 'run' column."""
     if response_name not in results.columns:
         raise ValueError(
             f"Response '{response_name}' not found in results columns: "
@@ -38,10 +38,9 @@ def _validate_inputs(design: pd.DataFrame, results: pd.DataFrame,
 
 
 def _merge_and_validate(design: pd.DataFrame, results: pd.DataFrame,
-                        response_name: str, factor_names: list[str]
-                        ) -> tuple[pd.DataFrame, np.ndarray]:
+                        response_name: str) -> tuple[pd.DataFrame, np.ndarray]:
     """Merge design and results on 'run', validate, return (merged_design, y)."""
-    _validate_inputs(design, results, response_name, factor_names)
+    _validate_inputs(design, results, response_name)
 
     merged = design.merge(results[["run", response_name]], on="run", how="inner")
     if len(merged) == 0:
@@ -99,7 +98,7 @@ def fit_linear(factors: list[dict], design: pd.DataFrame, results: pd.DataFrame,
     """
     factor_names = [f["name"] for f in factors]
 
-    merged, y = _merge_and_validate(design, results, response_name, factor_names)
+    merged, y = _merge_and_validate(design, results, response_name)
 
     # Build X matrix: intercept + main effects + 2-way interactions
     X_cols = ["Intercept"] + factor_names
@@ -160,7 +159,7 @@ def fit_rsm(factors: list[dict], design: pd.DataFrame, results: pd.DataFrame,
     """
     factor_names = [f["name"] for f in factors]
 
-    merged, y = _merge_and_validate(design, results, response_name, factor_names)
+    merged, y = _merge_and_validate(design, results, response_name)
 
     # Build X: intercept + main + 2-way interactions + quadratic
     X_cols = ["Intercept"] + factor_names
