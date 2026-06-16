@@ -155,47 +155,32 @@ def _render_landing(doe_repo: DoeRepository):
 # Step 1: Define factors and responses
 # ---------------------------------------------------------------------------
 
-def _init_define_list(key: str, session: dict, session_key: str,
-                      default: list[dict]) -> None:
-    """Ensure a session-state list exists for a define-step editor.
 
-    On first render, seeds from ``session[session_key]`` (e.g. when resuming
-    a saved DOE).  If that is empty, fills with ``default`` (one blank row).
-    """
-    if key not in st.session_state:
+def _seed_define_list(list_key: str, session: dict, session_key: str,
+                      default_row: dict) -> None:
+    """Seed a session-state list on first render."""
+    if list_key not in st.session_state:
         existing = session.get(session_key, [])
-        st.session_state[key] = existing if existing else [dict(d) for d in default]
+        st.session_state[list_key] = existing if existing else [dict(default_row)]
 
 
-def _render_add_remove_buttons(list_key: str, label: str) -> None:
-    """Render Add / Remove Last buttons that manage a session-state list.
+def _add_row(list_key: str) -> None:
+    """Callback: append a copy of the last row as template."""
+    st.session_state[list_key].append(dict(st.session_state[list_key][-1]))
 
-    Must be called **after** the data editor and its session-state commit
-    (``st.session_state[key] = edited.to_dict("records")``) so that
-    ``+ Add`` copies the freshly committed row values, not stale ones.
-    """
-    col_a, col_b = st.columns([1, 1])
-    with col_a:
-        if st.button(f"+ Add {label}", key=f"doe_add_{list_key}"):
-            st.session_state[list_key].append(
-                dict(st.session_state[list_key][-1])  # copy last row as template
-            )
-            st.rerun()
-    with col_b:
-        if (st.button(f"- Remove Last", key=f"doe_remove_{list_key}")
-                and len(st.session_state[list_key]) > 1):
-            st.session_state[list_key].pop()
-            st.rerun()
+
+def _remove_row(list_key: str, idx: int) -> None:
+    """Callback: remove row at index (keep at least 1)."""
+    if len(st.session_state[list_key]) > 1:
+        st.session_state[list_key].pop(idx)
 
 
 def _render_define(doe_repo: DoeRepository):
     """Step 1: Define factors and responses.
 
-    Uses session-state-managed lists with explicit Add/Remove buttons and
-    ``num_rows="fixed"`` editors.  This avoids a well-known Streamlit bug
-    where ``num_rows="dynamic"`` loses the last cell edit when the user
-    clicks a navigation button without first tabbing / clicking out of the
-    cell.
+    Each factor / response is a row of individual Streamlit widgets (not
+    ``st.data_editor``).  Every input has a unique key, so values are
+    tracked independently and never dropped on navigation.
     """
     session = st.session_state.doe_session
     entry_type = session["entry_type"]
@@ -207,58 +192,116 @@ def _render_define(doe_repo: DoeRepository):
     session["name"] = st.text_input("DOE Name", value=session.get("name", ""),
                                      key="doe_name_input")
 
-    # --- Factors ---
+    # ---- Factors ----
     st.markdown("##### Factors")
-    _init_define_list("doe_factors_list", session, "factors_json",
-                      [{"name": "", "type": "continuous", "low": 0.0, "high": 100.0}])
+    _seed_define_list("doe_factors_list", session, "factors_json",
+                      {"name": "", "type": "continuous", "low": 0.0, "high": 100.0})
 
-    factor_df = pd.DataFrame(st.session_state.doe_factors_list)
-    edited_factors = st.data_editor(
-        factor_df,
-        num_rows="fixed",
-        use_container_width=True,
-        key="doe_factors_editor",
-        column_config={
-            "name": st.column_config.TextColumn("Factor Name", required=True),
-            "type": st.column_config.SelectboxColumn(
-                "Type", options=["continuous", "categorical"], required=True
-            ),
-            "low": st.column_config.NumberColumn("Low", required=True, step=0.01, format="%.4f"),
-            "high": st.column_config.NumberColumn("High", required=True, step=0.01, format="%.4f"),
-        },
-        hide_index=True,
-    )
-    st.session_state.doe_factors_list = edited_factors.to_dict("records")
-    session["factors_json"] = st.session_state.doe_factors_list
+    # Header row
+    h_name, h_type, h_low, h_high, h_del = st.columns([3, 2, 2, 2, 1])
+    h_name.caption("Name")
+    h_type.caption("Type")
+    h_low.caption("Low")
+    h_high.caption("High")
+    h_del.caption("")
 
-    _render_add_remove_buttons("doe_factors_list", "Factor")
+    # Factor rows
+    for i in range(len(st.session_state.doe_factors_list)):
+        row = st.session_state.doe_factors_list[i]
+        c_name, c_type, c_low, c_high, c_del = st.columns([3, 2, 2, 2, 1])
+        with c_name:
+            row["name"] = st.text_input(
+                "Factor Name", value=str(row.get("name", "")),
+                key=f"fac_name_{i}", label_visibility="collapsed",
+                placeholder=f"Factor {i+1}",
+            )
+        with c_type:
+            row["type"] = st.selectbox(
+                "Type", options=["continuous", "categorical"],
+                index=0 if row.get("type") == "continuous" else 1,
+                key=f"fac_type_{i}", label_visibility="collapsed",
+            )
+        with c_low:
+            row["low"] = st.number_input(
+                "Low", value=float(row.get("low", 0.0)),
+                key=f"fac_low_{i}", label_visibility="collapsed",
+                step=0.01, format="%.4f",
+            )
+        with c_high:
+            row["high"] = st.number_input(
+                "High", value=float(row.get("high", 100.0)),
+                key=f"fac_high_{i}", label_visibility="collapsed",
+                step=0.01, format="%.4f",
+            )
+        with c_del:
+            if len(st.session_state.doe_factors_list) > 1:
+                st.button("✕", key=f"fac_del_{i}",
+                          on_click=_remove_row, args=("doe_factors_list", i))
 
-    # --- Responses ---
+    st.button("+ Add Factor", key="doe_add_factor",
+              on_click=_add_row, args=("doe_factors_list",))
+
+    session["factors_json"] = list(st.session_state.doe_factors_list)
+
+    # ---- Responses ----
     st.markdown("##### Responses")
-    _init_define_list("doe_responses_list", session, "responses_json",
-                      [{"name": "", "goal": "maximize", "target": None, "low": 0.0, "high": 100.0}])
+    _seed_define_list("doe_responses_list", session, "responses_json",
+                      {"name": "", "goal": "maximize", "target": None, "low": 0.0, "high": 100.0})
 
-    response_df = pd.DataFrame(st.session_state.doe_responses_list)
-    edited_responses = st.data_editor(
-        response_df,
-        num_rows="fixed",
-        use_container_width=True,
-        key="doe_responses_editor",
-        column_config={
-            "name": st.column_config.TextColumn("Response Name", required=True),
-            "goal": st.column_config.SelectboxColumn(
-                "Goal", options=["maximize", "minimize", "target"], required=True
-            ),
-            "target": st.column_config.NumberColumn("Target (for 'target' goal only)", step=0.01, format="%.4f"),
-            "low": st.column_config.NumberColumn("Low Bound", required=True, step=0.01, format="%.4f"),
-            "high": st.column_config.NumberColumn("High Bound", required=True, step=0.01, format="%.4f"),
-        },
-        hide_index=True,
-    )
-    st.session_state.doe_responses_list = edited_responses.to_dict("records")
-    session["responses_json"] = st.session_state.doe_responses_list
+    # Header row
+    rn, rg, rt, rl, rh, rd = st.columns([2.5, 1.5, 1.5, 1.5, 1.5, 1])
+    rn.caption("Name")
+    rg.caption("Goal")
+    rt.caption("Target")
+    rl.caption("Low")
+    rh.caption("High")
+    rd.caption("")
 
-    _render_add_remove_buttons("doe_responses_list", "Response")
+    # Response rows
+    for i in range(len(st.session_state.doe_responses_list)):
+        row = st.session_state.doe_responses_list[i]
+        rn_c, rg_c, rt_c, rl_c, rh_c, rd_c = st.columns([2.5, 1.5, 1.5, 1.5, 1.5, 1])
+        with rn_c:
+            row["name"] = st.text_input(
+                "Response Name", value=str(row.get("name", "")),
+                key=f"resp_name_{i}", label_visibility="collapsed",
+                placeholder=f"Response {i+1}",
+            )
+        with rg_c:
+            goals = ["maximize", "minimize", "target"]
+            cur_goal = row.get("goal", "maximize")
+            row["goal"] = st.selectbox(
+                "Goal", options=goals,
+                index=goals.index(cur_goal) if cur_goal in goals else 0,
+                key=f"resp_goal_{i}", label_visibility="collapsed",
+            )
+        with rt_c:
+            row["target"] = st.number_input(
+                "Target", value=float(row.get("target") or 0.0),
+                key=f"resp_target_{i}", label_visibility="collapsed",
+                step=0.01, format="%.4f",
+            ) if row.get("goal") == "target" else None
+        with rl_c:
+            row["low"] = st.number_input(
+                "Low", value=float(row.get("low", 0.0)),
+                key=f"resp_low_{i}", label_visibility="collapsed",
+                step=0.01, format="%.4f",
+            )
+        with rh_c:
+            row["high"] = st.number_input(
+                "High", value=float(row.get("high", 100.0)),
+                key=f"resp_high_{i}", label_visibility="collapsed",
+                step=0.01, format="%.4f",
+            )
+        with rd_c:
+            if len(st.session_state.doe_responses_list) > 1:
+                st.button("✕", key=f"resp_del_{i}",
+                          on_click=_remove_row, args=("doe_responses_list", i))
+
+    st.button("+ Add Response", key="doe_add_response",
+              on_click=_add_row, args=("doe_responses_list",))
+
+    session["responses_json"] = list(st.session_state.doe_responses_list)
 
     st.divider()
 
