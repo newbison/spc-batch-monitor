@@ -249,18 +249,18 @@ def _render_define(doe_repo: DoeRepository):
                       {"name": "", "goal": "maximize", "target": None, "low": 0.0, "high": 100.0})
 
     # Header row
-    rn, rg, rt, rl, rh, rd = st.columns([2.5, 1.5, 1.5, 1.5, 1.5, 1])
+    rn, rg, rt, rl, rh, rd = st.columns([2.5, 1.3, 1.3, 1.3, 1.3, 1])
     rn.caption("Name")
     rg.caption("Goal")
     rt.caption("Target")
-    rl.caption("Low")
-    rh.caption("High")
+    rl.caption("Low / Min")
+    rh.caption("High / Max")
     rd.caption("")
 
     # Response rows
     for i in range(len(st.session_state.doe_responses_list)):
         row = st.session_state.doe_responses_list[i]
-        rn_c, rg_c, rt_c, rl_c, rh_c, rd_c = st.columns([2.5, 1.5, 1.5, 1.5, 1.5, 1])
+        rn_c, rg_c, rt_c, rl_c, rh_c, rd_c = st.columns([2.5, 1.3, 1.3, 1.3, 1.3, 1])
         with rn_c:
             row["name"] = st.text_input(
                 "Response Name", value=str(row.get("name", "")),
@@ -276,23 +276,35 @@ def _render_define(doe_repo: DoeRepository):
                 key=f"resp_goal_{i}", label_visibility="collapsed",
             )
         with rt_c:
-            row["target"] = st.number_input(
-                "Target", value=float(row.get("target") or 0.0),
-                key=f"resp_target_{i}", label_visibility="collapsed",
-                step=0.01, format="%.4f",
-            ) if row.get("goal") == "target" else None
+            if row.get("goal") == "target":
+                row["target"] = st.number_input(
+                    "Target", value=float(row.get("target") or 0.0),
+                    key=f"resp_target_{i}", label_visibility="collapsed",
+                    step=0.01, format="%.4f",
+                )
+            else:
+                row["target"] = None
+                st.caption("—")
         with rl_c:
-            row["low"] = st.number_input(
-                "Low", value=float(row.get("low", 0.0)),
-                key=f"resp_low_{i}", label_visibility="collapsed",
-                step=0.01, format="%.4f",
-            )
+            if row.get("goal") in ("maximize", "target"):
+                row["low"] = st.number_input(
+                    "Low", value=float(row.get("low", 0.0)),
+                    key=f"resp_low_{i}", label_visibility="collapsed",
+                    step=0.01, format="%.4f",
+                )
+            else:
+                row["low"] = 0.0
+                st.caption("—")
         with rh_c:
-            row["high"] = st.number_input(
-                "High", value=float(row.get("high", 100.0)),
-                key=f"resp_high_{i}", label_visibility="collapsed",
-                step=0.01, format="%.4f",
-            )
+            if row.get("goal") in ("minimize", "target"):
+                row["high"] = st.number_input(
+                    "High", value=float(row.get("high", 100.0)),
+                    key=f"resp_high_{i}", label_visibility="collapsed",
+                    step=0.01, format="%.4f",
+                )
+            else:
+                row["high"] = 1e12
+                st.caption("—")
         with rd_c:
             if len(st.session_state.doe_responses_list) > 1:
                 st.button("✕", key=f"resp_del_{i}",
@@ -444,7 +456,11 @@ def _render_design(doe_repo: DoeRepository):
 # ---------------------------------------------------------------------------
 
 def _render_capture(doe_repo: DoeRepository):
-    """Step 3: Capture response values (manual entry or CSV upload)."""
+    """Step 3: Capture response values (manual entry or CSV upload).
+
+    Each run gets a row of individual ``st.number_input`` widgets — same
+    reliable pattern as the define step.  No ``st.data_editor``.
+    """
     session = st.session_state.doe_session
     design_json = session.get("design_json")
     factors = session.get("factors_json", [])
@@ -498,35 +514,47 @@ def _render_capture(doe_repo: DoeRepository):
 
     st.divider()
 
-    # Manual entry option
+    # Manual entry
     st.markdown("##### Or enter results manually")
 
-    if not session.get("results_json"):
-        # Initialize empty results table
-        if design_json:
-            empty_results = []
-            for d in design_json:
-                row = {"run": d["run"]}
-                for rname in response_names:
-                    row[rname] = None
-                empty_results.append(row)
-            session["results_json"] = empty_results
+    if not session.get("results_json") and design_json:
+        empty_results = []
+        for d in design_json:
+            row = {"run": d["run"]}
+            for rname in response_names:
+                row[rname] = 0.0
+            empty_results.append(row)
+        session["results_json"] = empty_results
 
     if session.get("results_json"):
-        results_df = pd.DataFrame(session["results_json"])
-        edited = st.data_editor(
-            results_df,
-            num_rows="dynamic",
-            use_container_width=True,
-            key="doe_results_editor",
-            column_config={
-                "run": st.column_config.NumberColumn("Run", disabled=True),
-                **{rname: st.column_config.NumberColumn(rname, required=True)
-                   for rname in response_names},
-            },
-            hide_index=True,
-        )
-        session["results_json"] = edited.to_dict("records")
+        results = session["results_json"]
+
+        # Header
+        header_cols = st.columns([1] + [2] * len(response_names))
+        header_cols[0].caption("Run")
+        for j, rname in enumerate(response_names):
+            header_cols[j + 1].caption(rname)
+
+        # One row per run
+        for i, row in enumerate(results):
+            cols = st.columns([1] + [2] * len(response_names))
+            with cols[0]:
+                st.markdown(
+                    f"<p style='padding-top:0.5rem;text-align:center;"
+                    f"font-weight:600;color:#5C3D2A;'>{row['run']}</p>",
+                    unsafe_allow_html=True,
+                )
+            for j, rname in enumerate(response_names):
+                with cols[j + 1]:
+                    row[rname] = st.number_input(
+                        rname,
+                        value=float(row.get(rname, 0.0) or 0.0),
+                        key=f"capture_{i}_{rname}",
+                        label_visibility="collapsed",
+                        step=0.01, format="%.4f",
+                    )
+
+        session["results_json"] = results
 
     st.divider()
 
@@ -739,7 +767,6 @@ def _render_optimize(doe_repo: DoeRepository):
 
     # Show editable response goals
     st.markdown("##### Response Goals")
-    goal_edits = []
     for r in responses:
         c1, c2, c3, c4 = st.columns(4)
         with c1:
@@ -752,18 +779,31 @@ def _render_optimize(doe_repo: DoeRepository):
             )
             r["goal"] = goal
         with c3:
-            low = st.number_input("Low", value=float(r["low"]), step=0.01, format="%.4f", key=f"doe_low_{r['name']}")
-            r["low"] = low
+            if r["goal"] in ("maximize", "target"):
+                low = st.number_input(
+                    "Low", value=float(r.get("low", 0.0)),
+                    step=0.01, format="%.4f", key=f"doe_low_{r['name']}",
+                )
+                r["low"] = low
+            else:
+                r["low"] = 0.0
+                st.caption("—")
         with c4:
-            high = st.number_input("High", value=float(r["high"]), step=0.01, format="%.4f", key=f"doe_high_{r['name']}")
-            r["high"] = high
+            if r["goal"] in ("minimize", "target"):
+                high = st.number_input(
+                    "High", value=float(r.get("high", 100.0)),
+                    step=0.01, format="%.4f", key=f"doe_high_{r['name']}",
+                )
+                r["high"] = high
+            else:
+                r["high"] = 1e12
+                st.caption("—")
         if r["goal"] == "target":
             r["target"] = st.number_input(
                 "Target", value=float(r.get("target") or r["low"]),
                 step=0.01, format="%.4f",
                 key=f"doe_target_{r['name']}",
             )
-        goal_edits.append(r)
 
     st.divider()
 
@@ -816,7 +856,43 @@ def _render_optimize(doe_repo: DoeRepository):
         for w in result.get("warnings", []):
             st.warning(w)
 
-        # Download summary
+        # ---- Response-surface plots ----
+        st.divider()
+        st.markdown("### Response Surfaces")
+
+        design_df = pd.DataFrame(session.get("design_json", []))
+        factor_names = [f["name"] for f in factors]
+        continuous_factors = [f for f in factors if f["type"] == "continuous"]
+
+        for r in responses:
+            rname = r["name"]
+            if rname not in models:
+                continue
+            model = models[rname]
+
+            # Main effects plot
+            if factor_names and design_df is not None and not design_df.empty:
+                merged = design_df.copy()
+                results_df = pd.DataFrame(session.get("results_json", []))
+                if not results_df.empty and rname in results_df.columns:
+                    merged[rname] = results_df[rname].values
+                    fig_main = _build_main_effects_plot(merged, factor_names, rname, model)
+                    st.plotly_chart(fig_main, use_container_width=True)
+
+            # Pareto
+            fig_pareto = _build_pareto_plot(model)
+            st.plotly_chart(fig_pareto, use_container_width=True)
+
+            # Contour + surface for 2+ continuous factors
+            if len(continuous_factors) >= 2:
+                x_name = continuous_factors[0]["name"]
+                y_name = continuous_factors[1]["name"]
+                fig_contour = _build_contour_plot(factors, model, rname, x_name, y_name)
+                st.plotly_chart(fig_contour, use_container_width=True)
+                fig_surface = _build_surface_plot(factors, model, rname, x_name, y_name)
+                st.plotly_chart(fig_surface, use_container_width=True)
+
+        # ---- Download summary ----
         summary_rows = []
         summary_rows.append(["Optimal Settings"])
         for f in factors:
