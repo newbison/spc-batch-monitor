@@ -49,6 +49,29 @@ CUSTOM_CSS = """
         color: #C4A88C; font-size: 0.8rem; margin: 0.2rem 0 0 0;
     }
 
+    /* --- DOE sidebar call-to-action --- */
+    .doe-sidebar-label {
+        color: #C4734F !important;
+        font-size: 0.6rem !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.12em !important;
+        text-transform: uppercase;
+        margin: 1rem 0 0.3rem 0 !important;
+        padding: 0;
+    }
+    section[data-testid="stSidebar"] button[kind="primary"] {
+        background: #C4734F !important;
+        border-color: #C4734F !important;
+        font-weight: 600;
+        border-radius: 4px;
+        transition: all 0.15s ease;
+    }
+    section[data-testid="stSidebar"] button[kind="primary"]:hover {
+        background: #D4835F !important;
+        border-color: #D4835F !important;
+        box-shadow: 0 2px 8px rgba(196, 115, 79, 0.4);
+    }
+
     /* --- Metric cards --- */
     div[data-testid="stMetric"] {
         background: white;
