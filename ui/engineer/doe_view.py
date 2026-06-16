@@ -12,6 +12,15 @@ from plotly.subplots import make_subplots
 from data_access.base import DataRepository
 from doe.persistence import DoeRepository
 from config import DB_FILE
+from doe.designs import (
+    generate_full_factorial,
+    generate_fractional_factorial,
+    add_center_points,
+    decode_to_actual,
+    get_fractional_run_count,
+)
+from doe.analysis import fit_linear, fit_rsm, has_curvature, predict_from_model, _is_center_row
+from doe.optimization import optimize as doe_optimize
 
 # JSON persistence key prefix for session state
 DOE_REPO_KEY = "doe_repo"
@@ -277,7 +286,7 @@ def _render_design(doe_repo: DoeRepository):
                      "Resolution V: main effects + 2-way interactions clear of each other.",
                 key="doe_resolution",
             )
-            n_runs = 2 ** (n_factors - 1) if resolution >= 4 else 2 ** n_factors
+            n_runs = get_fractional_run_count(n_factors, resolution)
             st.info(f"Estimated runs: {n_runs} (fractional factorial)")
         else:
             n_center = st.slider("Center points", min_value=0, max_value=5,
@@ -288,15 +297,8 @@ def _render_design(doe_repo: DoeRepository):
     st.divider()
 
     if st.button("Generate Run Sheet", type="primary", key="doe_gen_design"):
-        from doe.designs import (
-            generate_full_factorial,
-            generate_fractional_factorial,
-            add_center_points,
-            decode_to_actual,
-        )
-
         if entry_type == "screening":
-            coded_df = generate_fractional_factorial(factors, resolution=4)
+            coded_df = generate_fractional_factorial(factors, resolution=resolution)
         else:
             coded_df = generate_full_factorial(factors, n_center=n_center)
 
@@ -508,14 +510,14 @@ def _render_analyze(doe_repo: DoeRepository):
         st.markdown(f"### Response: {rname}")
 
         # Fit linear model
-        from doe.analysis import fit_linear, fit_rsm, has_curvature
-
         linear_model = fit_linear(factors, design_df, results_df, rname)
 
         # Coefficient table
         st.markdown("##### Coefficients (Linear Model)")
         coef_df = pd.DataFrame(linear_model["coefficients"])
-        coef_df["p_value"] = coef_df["p_value"].map(lambda x: f"{x:.4f}")
+        coef_df["p_value"] = coef_df["p_value"].map(
+            lambda x: f"{x:.4f}" if x is not None else "N/A"
+        )
         coef_df["estimate"] = coef_df["estimate"].map(lambda x: f"{x:.3f}")
         coef_df.rename(columns={
             "term": "Term", "estimate": "Estimate",
@@ -526,14 +528,15 @@ def _render_analyze(doe_repo: DoeRepository):
 
         # Model summary metrics
         c1, c2, c3 = st.columns(3)
-        c1.metric("R-squared", f"{linear_model['r_squared']:.4f}")
-        c2.metric("Adj R-squared", f"{linear_model['r_squared_adj']:.4f}")
-        c3.metric("Model p-value", f"{linear_model['model_p_value']:.4f}")
+        r2_str = f"{linear_model['r_squared']:.4f}" if linear_model.get('r_squared') is not None else "N/A"
+        adj_r2_str = f"{linear_model['r_squared_adj']:.4f}" if linear_model.get('r_squared_adj') is not None else "N/A"
+        pval_str = f"{linear_model['model_p_value']:.4f}" if linear_model.get('model_p_value') is not None else "N/A"
+        c1.metric("R-squared", r2_str)
+        c2.metric("Adj R-squared", adj_r2_str)
+        c3.metric("Model p-value", pval_str)
 
         # Check for center points -> RSM
-        is_center = np.ones(len(merged), dtype=bool)
-        for f in factor_names:
-            is_center &= np.abs(merged[f].values) < 0.01
+        is_center = _is_center_row(merged, factor_names)
 
         has_center = is_center.sum() >= 3
 
@@ -548,7 +551,9 @@ def _render_analyze(doe_repo: DoeRepository):
 
                 st.markdown("##### RSM Coefficients")
                 rsm_coef_df = pd.DataFrame(rsm_model["coefficients"])
-                rsm_coef_df["p_value"] = rsm_coef_df["p_value"].map(lambda x: f"{x:.4f}")
+                rsm_coef_df["p_value"] = rsm_coef_df["p_value"].map(
+                    lambda x: f"{x:.4f}" if x is not None else "N/A"
+                )
                 rsm_coef_df["estimate"] = rsm_coef_df["estimate"].map(lambda x: f"{x:.3f}")
                 rsm_coef_df.rename(columns={
                     "term": "Term", "estimate": "Estimate",
@@ -677,8 +682,6 @@ def _render_optimize(doe_repo: DoeRepository):
     st.divider()
 
     if st.button("Find Optimum", type="primary", key="doe_find_optimum"):
-        from doe.optimization import optimize as doe_optimize
-
         result = doe_optimize(factors, responses, models, n_starts=10)
         session["optimum_json"] = result
 
@@ -711,7 +714,7 @@ def _render_optimize(doe_repo: DoeRepository):
             pi = result["prediction_intervals"].get(r["name"], ["—", "—"])
             with resp_cols[i]:
                 st.metric(r["name"], f"{pred}")
-                st.caption(f"95% PI: [{pi[0]} - {pi[1]}]")
+                st.caption(f"Prediction range: [{pi[0]} – {pi[1]}]")
 
         # Overall desirability
         st.markdown("#### Overall Desirability")
@@ -722,6 +725,10 @@ def _render_optimize(doe_repo: DoeRepository):
             st.warning(f"D = {d:.3f} — Acceptable")
         else:
             st.error(f"D = {d:.3f} — Poor — consider adjusting response goals")
+
+        # Show optimizer warnings
+        for w in result.get("warnings", []):
+            st.warning(w)
 
         # Download summary
         summary_rows = []
@@ -823,7 +830,6 @@ def _build_contour_plot(factors: list[dict], model: dict, response_name: str,
             point = {f["name"]: 0.0 for f in factors}
             point[x_name] = xv
             point[y_name] = yv
-            from doe.analysis import predict_from_model
             Z[i, j] = predict_from_model(model, factors, point)
 
     fig = go.Figure(go.Contour(
@@ -850,7 +856,6 @@ def _build_surface_plot(factors: list[dict], model: dict, response_name: str,
             point = {f["name"]: 0.0 for f in factors}
             point[x_name] = xv
             point[y_name] = yv
-            from doe.analysis import predict_from_model
             Z[i, j] = predict_from_model(model, factors, point)
 
     fig = go.Figure(data=[go.Surface(z=Z, x=grid, y=grid, colorscale="RdYlBu_r")])
