@@ -170,9 +170,9 @@ def _init_define_list(key: str, session: dict, session_key: str,
 def _render_add_remove_buttons(list_key: str, label: str) -> None:
     """Render Add / Remove Last buttons that manage a session-state list.
 
-    The buttons mutate the list and trigger a re-run so the data editor
-    re-renders with the correct ``num_rows="fixed"`` count.  This avoids
-    the ``num_rows="dynamic"`` last-cell-commit bug.
+    Must be called **after** the data editor and its session-state commit
+    (``st.session_state[key] = edited.to_dict("records")``) so that
+    ``+ Add`` copies the freshly committed row values, not stale ones.
     """
     col_a, col_b = st.columns([1, 1])
     with col_a:
@@ -212,8 +212,6 @@ def _render_define(doe_repo: DoeRepository):
     _init_define_list("doe_factors_list", session, "factors_json",
                       [{"name": "", "type": "continuous", "low": 0.0, "high": 100.0}])
 
-    _render_add_remove_buttons("doe_factors_list", "Factor")
-
     factor_df = pd.DataFrame(st.session_state.doe_factors_list)
     edited_factors = st.data_editor(
         factor_df,
@@ -233,12 +231,12 @@ def _render_define(doe_repo: DoeRepository):
     st.session_state.doe_factors_list = edited_factors.to_dict("records")
     session["factors_json"] = st.session_state.doe_factors_list
 
+    _render_add_remove_buttons("doe_factors_list", "Factor")
+
     # --- Responses ---
     st.markdown("##### Responses")
     _init_define_list("doe_responses_list", session, "responses_json",
                       [{"name": "", "goal": "maximize", "target": None, "low": 0.0, "high": 100.0}])
-
-    _render_add_remove_buttons("doe_responses_list", "Response")
 
     response_df = pd.DataFrame(st.session_state.doe_responses_list)
     edited_responses = st.data_editor(
@@ -259,6 +257,8 @@ def _render_define(doe_repo: DoeRepository):
     )
     st.session_state.doe_responses_list = edited_responses.to_dict("records")
     session["responses_json"] = st.session_state.doe_responses_list
+
+    _render_add_remove_buttons("doe_responses_list", "Response")
 
     st.divider()
 
