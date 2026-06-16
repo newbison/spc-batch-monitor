@@ -155,8 +155,48 @@ def _render_landing(doe_repo: DoeRepository):
 # Step 1: Define factors and responses
 # ---------------------------------------------------------------------------
 
+def _init_define_list(key: str, session: dict, session_key: str,
+                      default: list[dict]) -> None:
+    """Ensure a session-state list exists for a define-step editor.
+
+    On first render, seeds from ``session[session_key]`` (e.g. when resuming
+    a saved DOE).  If that is empty, fills with ``default`` (one blank row).
+    """
+    if key not in st.session_state:
+        existing = session.get(session_key, [])
+        st.session_state[key] = existing if existing else [dict(d) for d in default]
+
+
+def _render_add_remove_buttons(list_key: str, label: str) -> None:
+    """Render Add / Remove Last buttons that manage a session-state list.
+
+    The buttons mutate the list and trigger a re-run so the data editor
+    re-renders with the correct ``num_rows="fixed"`` count.  This avoids
+    the ``num_rows="dynamic"`` last-cell-commit bug.
+    """
+    col_a, col_b = st.columns([1, 1])
+    with col_a:
+        if st.button(f"+ Add {label}", key=f"doe_add_{list_key}"):
+            st.session_state[list_key].append(
+                dict(st.session_state[list_key][-1])  # copy last row as template
+            )
+            st.rerun()
+    with col_b:
+        if (st.button(f"- Remove Last", key=f"doe_remove_{list_key}")
+                and len(st.session_state[list_key]) > 1):
+            st.session_state[list_key].pop()
+            st.rerun()
+
+
 def _render_define(doe_repo: DoeRepository):
-    """Step 1: Define factors and responses."""
+    """Step 1: Define factors and responses.
+
+    Uses session-state-managed lists with explicit Add/Remove buttons and
+    ``num_rows="fixed"`` editors.  This avoids a well-known Streamlit bug
+    where ``num_rows="dynamic"`` loses the last cell edit when the user
+    clicks a navigation button without first tabbing / clicking out of the
+    cell.
+    """
     session = st.session_state.doe_session
     entry_type = session["entry_type"]
 
@@ -169,14 +209,15 @@ def _render_define(doe_repo: DoeRepository):
 
     # --- Factors ---
     st.markdown("##### Factors")
-    factors = session.get("factors_json", [])
+    _init_define_list("doe_factors_list", session, "factors_json",
+                      [{"name": "", "type": "continuous", "low": 0.0, "high": 100.0}])
 
-    if not factors:
-        factors = [{"name": "", "type": "continuous", "low": 0.0, "high": 100.0}]
+    _render_add_remove_buttons("doe_factors_list", "Factor")
 
+    factor_df = pd.DataFrame(st.session_state.doe_factors_list)
     edited_factors = st.data_editor(
-        pd.DataFrame(factors),
-        num_rows="dynamic",
+        factor_df,
+        num_rows="fixed",
         use_container_width=True,
         key="doe_factors_editor",
         column_config={
@@ -189,18 +230,20 @@ def _render_define(doe_repo: DoeRepository):
         },
         hide_index=True,
     )
-    session["factors_json"] = edited_factors.to_dict("records")
+    st.session_state.doe_factors_list = edited_factors.to_dict("records")
+    session["factors_json"] = st.session_state.doe_factors_list
 
     # --- Responses ---
     st.markdown("##### Responses")
-    responses = session.get("responses_json", [])
+    _init_define_list("doe_responses_list", session, "responses_json",
+                      [{"name": "", "goal": "maximize", "target": None, "low": 0.0, "high": 100.0}])
 
-    if not responses:
-        responses = [{"name": "", "goal": "maximize", "target": None, "low": 0.0, "high": 100.0}]
+    _render_add_remove_buttons("doe_responses_list", "Response")
 
+    response_df = pd.DataFrame(st.session_state.doe_responses_list)
     edited_responses = st.data_editor(
-        pd.DataFrame(responses),
-        num_rows="dynamic",
+        response_df,
+        num_rows="fixed",
         use_container_width=True,
         key="doe_responses_editor",
         column_config={
@@ -214,7 +257,8 @@ def _render_define(doe_repo: DoeRepository):
         },
         hide_index=True,
     )
-    session["responses_json"] = edited_responses.to_dict("records")
+    st.session_state.doe_responses_list = edited_responses.to_dict("records")
+    session["responses_json"] = st.session_state.doe_responses_list
 
     st.divider()
 
