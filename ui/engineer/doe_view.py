@@ -3,7 +3,6 @@
 Multi-entry wizard: Landing -> Define -> Design -> Capture -> Analyze -> Optimize.
 """
 
-import json
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -103,12 +102,12 @@ def _render_landing(doe_repo: DoeRepository):
                     "name": session["name"],
                     "entry_type": session["entry_type"],
                     "status": session["status"],
-                    "factors_json": json.loads(session["factors"]) if session["factors"] else [],
-                    "responses_json": json.loads(session["responses"]) if session["responses"] else [],
-                    "design_json": json.loads(session["design"]) if session.get("design") else None,
-                    "results_json": json.loads(session["results"]) if session.get("results") else None,
-                    "model_json": json.loads(session["model"]) if session.get("model") else None,
-                    "optimum_json": json.loads(session["optimum"]) if session.get("optimum") else None,
+                    "factors_json": session["factors"] if session["factors"] else [],
+                    "responses_json": session["responses"] if session["responses"] else [],
+                    "design_json": session.get("design"),
+                    "results_json": session.get("results"),
+                    "model_json": session.get("model"),
+                    "optimum_json": session.get("optimum"),
                     "db_id": sid,
                 }
                 # Navigate to the appropriate step
