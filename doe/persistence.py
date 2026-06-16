@@ -36,6 +36,13 @@ class DoeRepository:
         self.db_path = db_path
         self._init_db()
 
+    # Whitelist of allowed column names (prevents SQL injection via dict keys)
+    ALLOWED_COLUMNS = {
+        "name", "status", "entry_type",
+        "factors", "responses", "design", "results", "model", "optimum",
+    }
+    JSON_COLUMNS = {"factors", "responses", "design", "results", "model", "optimum"}
+
     @contextmanager
     def _conn(self):
         conn = sqlite3.connect(str(self.db_path))
@@ -87,7 +94,8 @@ class DoeRepository:
     def load(self, session_id: int) -> dict:
         """Load a DOE session by ID.
 
-        Returns a dict with all columns as strings (JSON columns not parsed).
+        Returns a dict with all columns. JSON columns (factors, responses,
+        design, results, model, optimum) are auto-parsed into Python objects.
         """
         with self._conn() as conn:
             row = conn.execute(
@@ -95,7 +103,15 @@ class DoeRepository:
             ).fetchone()
             if row is None:
                 raise KeyError(f"DOE session {session_id} not found")
-            return dict(row)
+            result = dict(row)
+            # Auto-parse JSON columns
+            for col in self.JSON_COLUMNS:
+                if col in result and result[col] is not None:
+                    try:
+                        result[col] = json.loads(result[col])
+                    except (json.JSONDecodeError, TypeError):
+                        pass  # Leave as-is if not valid JSON
+            return result
 
     def update(self, session_id: int, updates: dict) -> None:
         """Update specific fields of a DOE session.
@@ -112,8 +128,11 @@ class DoeRepository:
         params = []
 
         for key, value in updates.items():
-            json_cols = {"design", "results", "model", "optimum", "factors", "responses"}
-            if key in json_cols:
+            if key not in self.ALLOWED_COLUMNS:
+                raise ValueError(
+                    f"Unknown column '{key}'. Allowed: {sorted(self.ALLOWED_COLUMNS)}"
+                )
+            if key in self.JSON_COLUMNS:
                 set_parts.append(f"{key} = ?")
                 params.append(json.dumps(value))
             else:

@@ -1,6 +1,8 @@
-import json
 import tempfile
 from pathlib import Path
+
+import pytest
+
 from doe.persistence import DoeRepository
 
 
@@ -51,8 +53,8 @@ def test_create_and_load_session():
         assert session["name"] == "Screening Run 1"
         assert session["entry_type"] == "screening"
         assert session["status"] == "defined"
-        assert json.loads(session["factors"]) == SAMPLE_FACTORS
-        assert json.loads(session["responses"]) == SAMPLE_RESPONSES
+        assert session["factors"] == SAMPLE_FACTORS
+        assert session["responses"] == SAMPLE_RESPONSES
 
 
 def test_update_session():
@@ -73,7 +75,7 @@ def test_update_session():
 
         session = repo.load(session_id)
         assert session["status"] == "designed"
-        assert json.loads(session["design"]) == SAMPLE_DESIGN
+        assert session["design"] == SAMPLE_DESIGN
 
         repo.update(session_id, {
             "results": SAMPLE_RESULTS,
@@ -82,7 +84,7 @@ def test_update_session():
 
         session = repo.load(session_id)
         assert session["status"] == "running"
-        assert json.loads(session["results"]) == SAMPLE_RESULTS
+        assert session["results"] == SAMPLE_RESULTS
 
 
 def test_list_sessions():
@@ -145,4 +147,35 @@ def test_full_lifecycle():
 
         session = repo.load(sid)
         assert session["status"] == "optimized"
-        assert json.loads(session["optimum"])["desirability"] == 0.82
+        assert session["optimum"]["desirability"] == 0.82
+
+
+def test_update_rejects_unknown_column():
+    """update() raises ValueError for non-whitelisted column names."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / "doe_test.db"
+        repo = DoeRepository(db_path)
+        sid = repo.create("Test", "screening", SAMPLE_FACTORS, SAMPLE_RESPONSES)
+        with pytest.raises(ValueError, match="Unknown column"):
+            repo.update(sid, {"malicious_column; DROP TABLE doe_sessions; --": "oops"})
+
+
+def test_update_whitelisted_columns_work():
+    """update() accepts all standard whitelisted columns."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / "doe_test.db"
+        repo = DoeRepository(db_path)
+        sid = repo.create("Test", "screening", SAMPLE_FACTORS, SAMPLE_RESPONSES)
+
+        # All these should succeed without error
+        repo.update(sid, {"design": SAMPLE_DESIGN, "status": "designed"})
+        repo.update(sid, {"results": SAMPLE_RESULTS})
+        repo.update(sid, {"model": {"r_squared": 0.9}})
+        repo.update(sid, {"optimum": {"desirability": 0.8}})
+        repo.update(sid, {"name": "Renamed"})
+
+        session = repo.load(sid)
+        assert session["name"] == "Renamed"
+        # JSON columns auto-parsed in updated load()
+        assert isinstance(session["design"], list)
+        assert isinstance(session["model"], dict)
