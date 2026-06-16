@@ -31,7 +31,7 @@
 
 - [ ] **Step 1: Add python-pptx and kaleido to requirements.txt**
 
-Add these two lines to the end of `D:\coding_is_fun\SPC\requirements.txt`:
+Add these two lines to the end of `requirements.txt`:
 
 ```
 python-pptx>=0.6.23
@@ -77,7 +77,7 @@ git commit -m "chore: add python-pptx and kaleido dependencies for PPTX report e
 
 - [ ] **Step 1: Write the failing test**
 
-Create `D:\coding_is_fun\SPC\tests\test_narrative.py`:
+Create `tests\test_narrative.py`:
 
 ```python
 import math
@@ -186,11 +186,11 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'reports'`
 
 - [ ] **Step 3: Create the package init**
 
-Create `D:\coding_is_fun\SPC\reports\__init__.py` (empty file).
+Create `reports\__init__.py` (empty file).
 
 - [ ] **Step 4: Implement narrative.py**
 
-Create `D:\coding_is_fun\SPC\reports\narrative.py`:
+Create `reports\narrative.py`:
 
 ```python
 """Auto-generated executive summary text for SPC reports."""
@@ -330,7 +330,7 @@ git commit -m "feat: add narrative generator for auto-generated SPC report summa
 
 - [ ] **Step 1: Write the failing test**
 
-Create `D:\coding_is_fun\SPC\tests\test_pptx_generator.py`:
+Create `tests\test_pptx_generator.py`:
 
 ```python
 import io
@@ -469,7 +469,7 @@ Expected: FAIL with `ImportError: cannot import name 'build_report'`
 
 - [ ] **Step 3: Implement pptx_generator.py**
 
-Create `D:\coding_is_fun\SPC\reports\pptx_generator.py`:
+Create `reports\pptx_generator.py`:
 
 ```python
 """PPTX report generator for SPC analysis.
@@ -817,7 +817,7 @@ git commit -m "feat: add PPTX report generator with 5-slide template"
 ### Task 4: Add "Export Report" tab to Engineer page
 
 **Files:**
-- Modify: `D:\coding_is_fun\SPC\ui\engineer\chart_view.py`
+- Modify: `ui\engineer\chart_view.py`
 
 - [ ] **Step 1: Read the current chart_view.py**
 
