@@ -5,7 +5,7 @@ Pure Python — no Streamlit imports.
 
 import numpy as np
 from scipy.optimize import minimize
-from doe.analysis import predict_from_model, _pairwise
+from doe.analysis import predict_from_model
 
 
 def desirability(value: float, goal: str, low: float, high: float,
@@ -113,10 +113,11 @@ def optimize(
         predicted_responses: dict of response name -> predicted value
         desirability: float (overall desirability 0-1)
         prediction_intervals: dict of response name -> [lower, upper]
+        warnings: list of str — non-fatal warnings (e.g., fallback used)
     """
-    # Bounds in coded space: [-1, +1] for continuous, [-1, +1] for categorical
     factor_names = [f["name"] for f in factors]
     bounds = [(-1.0, 1.0) for _ in factors]
+    warnings = []
 
     def negative_desirability(coded_point: np.ndarray) -> float:
         """Negative overall desirability (for minimization)."""
@@ -138,6 +139,7 @@ def optimize(
     # Multi-start optimization
     best_result = None
     best_fun = np.inf
+    failure_count = 0
 
     rng = np.random.RandomState(42)
     for _ in range(n_starts):
@@ -153,14 +155,22 @@ def optimize(
                 best_fun = result.fun
                 best_result = result
         except Exception:
+            failure_count += 1
             continue
 
+    if failure_count > 0:
+        warnings.append(f"{failure_count}/{n_starts} optimization starts failed "
+                        "(non-fatal)")
+
     if best_result is None:
+        warnings.append("All optimization starts failed. Returning midpoint "
+                        "estimate — results are NOT reliable.")
         return {
             "optimal_settings": {f["name"]: (f["low"] + f["high"]) / 2 for f in factors},
             "predicted_responses": {r["name"]: 0.0 for r in responses},
             "desirability": 0.0,
             "prediction_intervals": {r["name"]: [0.0, 0.0] for r in responses},
+            "warnings": warnings,
         }
 
     # Decode optimal coded point to actual values
@@ -176,18 +186,27 @@ def optimize(
             actual = max(f["low"], min(f["high"], actual))
             optimal_settings[f["name"]] = round(actual, 2)
         else:
-            # Categorical: round to nearest
+            # Categorical: round to nearest endpoint
             optimal_settings[f["name"]] = f["low"] if coded_val < 0 else f["high"]
 
-    # Predict responses at optimum
+    # Predict responses at optimum with proper prediction intervals
     predicted_responses = {}
     prediction_intervals = {}
     for resp in responses:
         pred = predict_from_model(models[resp["name"]], factors, point)
         predicted_responses[resp["name"]] = round(float(pred), 3)
-        # Approximate prediction interval (±2 RMSE from model if available)
-        # For now, use a rough 10% interval
-        half_width = max(abs(pred) * 0.1, 0.1)
+
+        # Use model RMSE for proper prediction interval (±2 × RMSE approximation)
+        model_rmse = models[resp["name"]].get("rmse")
+        if model_rmse is not None and np.isfinite(model_rmse) and model_rmse > 0:
+            half_width = 2.0 * model_rmse
+        else:
+            # Fallback: 10% of predicted value (flagged as approximate)
+            half_width = max(abs(pred) * 0.1, 0.1)
+            warnings.append(
+                f"Response '{resp['name']}': no RMSE available; "
+                "prediction interval is approximate (±10%)."
+            )
         prediction_intervals[resp["name"]] = [
             round(float(pred - half_width), 3),
             round(float(pred + half_width), 3),
@@ -198,4 +217,5 @@ def optimize(
         "predicted_responses": predicted_responses,
         "desirability": round(-best_fun, 4),
         "prediction_intervals": prediction_intervals,
+        "warnings": warnings,
     }

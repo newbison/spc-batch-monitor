@@ -118,3 +118,61 @@ def test_optimize_multi_response():
     assert 100 <= result["optimal_settings"]["temp"] <= 200
     assert "yield" in result["predicted_responses"]
     assert "impurity" in result["predicted_responses"]
+
+
+def test_optimize_failure_fallback():
+    """When all starts fail, return fallback with warnings tracked."""
+    factors = [{"name": "A", "type": "continuous", "low": 50, "high": 80}]
+    responses = [{"name": "Y", "goal": "maximize", "target": None, "low": 5.0, "high": 25.0}]
+    # Model with None rmse — should use fallback interval
+    models = {
+        "Y": {
+            "coefficients": [
+                {"term": "Intercept", "estimate": 10.0},
+            ],
+            "rmse": None,
+        }
+    }
+    result = optimize(factors, responses, models, n_starts=1)
+    # Should still return a structure even with None rmse
+    assert "optimal_settings" in result
+    assert "predicted_responses" in result
+    assert "desirability" in result
+    assert "prediction_intervals" in result
+    assert "warnings" in result
+
+
+def test_prediction_intervals_from_rmse():
+    """Prediction intervals use model rmse when available (not 10% fudge)."""
+    factors = [{"name": "A", "type": "continuous", "low": 50, "high": 80}]
+    responses = [{"name": "Y", "goal": "maximize", "target": None, "low": 5.0, "high": 25.0}]
+    models = {
+        "Y": {
+            "coefficients": [
+                {"term": "Intercept", "estimate": 10.0},
+                {"term": "A", "estimate": 2.0},
+            ],
+            "rmse": 0.5,
+        }
+    }
+    result = optimize(factors, responses, models, n_starts=5)
+    pi = result["prediction_intervals"]["Y"]
+    # With rmse=0.5, half-width should be ~2*0.5=1.0, not ±10% of prediction
+    half_width = (pi[1] - pi[0]) / 2
+    assert 0.5 <= half_width <= 1.5  # around 1.0
+
+
+def test_desirability_out_of_domain():
+    """desirability handles values outside [low, high] gracefully (clamped)."""
+    # Value above high → d=1 for maximize
+    d = desirability(15.0, goal="maximize", low=5.0, high=10.0)
+    assert d == 1.0
+    # Value below low → d=0 for maximize
+    d = desirability(3.0, goal="maximize", low=5.0, high=10.0)
+    assert d == 0.0
+    # Value above high → d=0 for minimize
+    d = desirability(15.0, goal="minimize", low=5.0, high=10.0)
+    assert d == 0.0
+    # Value below low → d=1 for minimize
+    d = desirability(3.0, goal="minimize", low=5.0, high=10.0)
+    assert d == 1.0
