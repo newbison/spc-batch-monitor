@@ -265,32 +265,6 @@ CUSTOM_CSS = """
         background: #FAF6F0 !important;
     }
 
-    /* --- Info bar (below role bar) --- */
-    .info-bar {
-        display: flex;
-        align-items: center;
-        gap: 0.8rem;
-        background: #F5EDE3;
-        border: 1px solid #E0D3C0;
-        border-radius: 6px;
-        padding: 0.5rem 1rem;
-        margin-bottom: 1rem;
-        font-size: 0.9rem;
-    }
-    .info-bar-page {
-        font-weight: 700;
-        color: #C4734F;
-        letter-spacing: 0.05em;
-    }
-    .info-bar-sep {
-        color: #D4C4B0;
-        font-weight: 400;
-    }
-    .info-bar-summary {
-        color: #8C735B;
-        font-weight: 500;
-    }
-
     /* --- Select boxes --- */
     .stSelectbox div[data-baseweb="select"] > div {
         background: white;
@@ -340,33 +314,11 @@ def _render_role_bar() -> str:
     return st.session_state.role_selector
 
 
-def _render_info_bar(repo: DataRepository, page: str):
-    """Slim info bar below the role bar: data summary + current page label."""
-    df = repo.load_all()
-    if not df.empty:
-        rep_cols = [c for c in df.columns if c.startswith("rep") and c[3:].isdigit()]
-        summary = (
-            f"{len(df)} rows · {df['formula'].nunique()} formulas · "
-            f"{df['batch_id'].nunique()} batches · {len(rep_cols)} rep cols"
-        )
-    else:
-        summary = "No data loaded"
-
-    st.markdown(
-        f'<div class="info-bar">'
-        f'<span class="info-bar-page">{page.upper()}</span>'
-        f'<span class="info-bar-sep">|</span>'
-        f'<span class="info-bar-summary">{summary}</span>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-
 
 def _render_spc(repo: DataRepository):
-    """SPC sub-app: top role bar + info bar + sidebar (engineer ctx) + page routing."""
+    """SPC sub-app: top role bar + sidebar (engineer ctx) + page routing."""
     role = _render_role_bar()
     page = PAGE_MAP.get(role, "Data Entry")
-    _render_info_bar(repo, page)
     param = render_spc_sidebar(repo, role, page)
 
     if role == "Operator" and page == "Data Entry":

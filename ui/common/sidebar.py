@@ -1,15 +1,12 @@
 """SPC sub-app sidebar — engineer context only.
 
-The role selector has been moved to the top of the main content area
-(rendered by _render_role_bar in app.py). The data summary and page
-label have also been moved to the main content area (rendered by
-_render_info_bar in app.py).
+The role selector is rendered by _render_role_bar in app.py
+at the top of the main content area.
 
-This sidebar now only shows Engineer-specific context (current
-formula / parameter) so the sidebar is free for future SPC filters
-and selectors.
+This sidebar shows Engineer-specific context (current formula / parameter)
+and is free for future SPC filters and selectors.
 
-Called by the hub (app.py) after the app-selector buttons are rendered.
+Called by the hub (app.py) from _render_spc().
 """
 
 import streamlit as st
