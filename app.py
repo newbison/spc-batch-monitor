@@ -420,7 +420,7 @@ EXTERNAL_LINKS = [
 # ---------------------------------------------------------------------------
 
 def main():
-    st.set_page_config(page_title="Quality Lab", page_icon="🔬", layout="wide")
+    st.set_page_config(page_title="Forge AI", page_icon="🔥", layout="wide")
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
     if "repo" not in st.session_state:
@@ -431,19 +431,18 @@ def main():
     repo = st.session_state.repo
     current = st.session_state.current_app
 
-    # --- Hub sidebar: dynamic header + app selector ---
+    # --- Hub sidebar: brand header + app selector ---
     with st.sidebar:
-        app_info = next(a for a in APPS if a["key"] == current)
         st.markdown(f"""
         <div class="sidebar-header">
-            <h1>{app_info['icon']}  {app_info['title']}</h1>
-            <p>{app_info['subtitle']}</p>
+            <h1>🔥  Forge AI</h1>
+            <p>AI-Powered Materials Intelligence</p>
         </div>
         """, unsafe_allow_html=True)
 
         # App selector — big buttons
         st.markdown(
-            '<p class="sidebar-section-label">APPLICATION</p>',
+            '<p class="sidebar-section-label">MODULES</p>',
             unsafe_allow_html=True,
         )
         cols = st.columns(len(APPS))

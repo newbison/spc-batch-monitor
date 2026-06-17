@@ -1,6 +1,6 @@
-# Quality Lab
+# 🔥  Forge AI
 
-A Streamlit hub application for **Statistical Process Control (SPC)** of chemical batch coating processes and **Design of Experiments (DOE)** for process optimization. Tracks 4 quality parameters per batch with variable subgroup sizes (5–15 replicates) across multiple formulas.
+AI-Powered Materials Intelligence Platform — a Streamlit hub application for **Statistical Process Control (SPC)** of chemical batch coating processes and **Design of Experiments (DOE)** for process optimization. Tracks 4 quality parameters per batch with variable subgroup sizes (5–15 replicates) across multiple formulas.
 
 ![App screenshot](image/README/1778922140812.png)
 
