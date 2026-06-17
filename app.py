@@ -354,9 +354,15 @@ APPS = [
         "subtitle": "Design of Experiments",
         "render": _render_doe,
     },
-    # Future apps — just add an entry here:
-    # {"key": "LAB", "icon": "🔬", "title": "Lab", "subtitle": "Lab Management",
-    #  "render": _render_lab},
+    # External links (open in new tab, not rendered as sub-app)
+]
+
+EXTERNAL_LINKS = [
+    {
+        "icon": "🧬",
+        "title": "Polymer Simulation",
+        "url": "https://newbison.github.io/polymer_simulation/",
+    },
 ]
 
 
@@ -403,6 +409,28 @@ def main():
                 ):
                     st.session_state.current_app = app["key"]
                     st.rerun()
+
+        # External links
+        if EXTERNAL_LINKS:
+            st.divider()
+            st.markdown(
+                '<p class="sidebar-section-label">EXTERNAL TOOLS</p>',
+                unsafe_allow_html=True,
+            )
+            for link in EXTERNAL_LINKS:
+                st.markdown(
+                    f'<a href="{link["url"]}" target="_blank" rel="noopener" '
+                    f'style="display:block; text-align:center; '
+                    f'font-size:1.15rem; font-weight:800; '
+                    f'padding:0.8rem 0.3rem; min-height:64px; '
+                    f'line-height:64px; text-decoration:none; '
+                    f'border-radius:10px; border:2px solid #6B5A48; '
+                    f'background:rgba(255,255,255,0.08); color:#D4C4B0; '
+                    f'transition:all 0.15s ease;">'
+                    f'{link["icon"]}  {link["title"]}  ↗'
+                    f'</a>',
+                    unsafe_allow_html=True,
+                )
 
         st.divider()
 
