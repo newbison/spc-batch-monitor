@@ -50,14 +50,15 @@ def _build_template_csv(n: int) -> str:
 def render_data_entry(repo: DataRepository):
     st.header("🧪 Batch Data Entry")
 
-    mode = st.radio("Input mode:", ["📂 CSV Upload", "✏️ Manual Entry", "📋 View & Edit"],
-                    horizontal=True, key="entry_mode")
+    tab_csv, tab_manual, tab_view = st.tabs([
+        "📂 CSV Upload", "✏️ Manual Entry", "📋 View & Edit"
+    ])
 
-    if mode == "📂 CSV Upload":
+    with tab_csv:
         _render_csv_upload(repo)
-    elif mode == "✏️ Manual Entry":
+    with tab_manual:
         _render_manual_entry(repo)
-    else:
+    with tab_view:
         _render_view_edit(repo)
 
 

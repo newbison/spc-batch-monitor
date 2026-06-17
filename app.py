@@ -1,12 +1,28 @@
+"""Hub shell — routes between sub-apps (SPC, DOE, future apps).
+
+Architecture:
+    app.py (this file) = Hub: page config, CSS, repo init, app selector
+    Each sub-app owns its sidebar section + main content.
+
+Adding a new sub-app:
+    1. Write a render function: def _render_xxx(repo): ...
+    2. Add an entry to the APPS list below.
+    That's it — the sidebar button and routing appear automatically.
+"""
+
 import streamlit as st
 from config import DB_FILE
 from data_access.sqlite_repository import SqliteRepository
-from ui.common.sidebar import render_sidebar
+from data_access.base import DataRepository
+
+# --- Sub-app renderers (lazy imports inside functions to keep startup fast) ---
+from ui.common.sidebar import render_spc_sidebar
 from ui.operator.data_entry import render_data_entry
 from ui.engineer.chart_view import render_spc_analysis
 from ui.manager.dashboard import render_dashboard
 from ui.admin.data_manager import render_data_manager
 from ui.engineer.doe_view import render_doe_page
+
 
 CUSTOM_CSS = """
 <style>
@@ -27,14 +43,29 @@ CUSTOM_CSS = """
         background: #3B2A1A;
     }
     section[data-testid="stSidebar"] > div:first-child {padding-top: 0;}
-    section[data-testid="stSidebar"] label,
-    section[data-testid="stSidebar"] .stCaption {
-        color: #D4C4B0 !important;
+    /* Force all sidebar text white & large */
+    section[data-testid="stSidebar"],
+    section[data-testid="stSidebar"] * {
+        color: #FFFFFF !important;
     }
     section[data-testid="stSidebar"] .stSelectbox label,
-    section[data-testid="stSidebar"] .stRadio label {
-        font-size: 0.8rem; color: #D4C4B0 !important; font-weight: 600;
+    section[data-testid="stSidebar"] .stRadio label,
+    section[data-testid="stSidebar"] .stRadio p,
+    section[data-testid="stSidebar"] .stRadio span,
+    section[data-testid="stSidebar"] [data-baseweb="radio"] label,
+    section[data-testid="stSidebar"] [data-baseweb="radio"] span,
+    section[data-testid="stSidebar"] [data-baseweb="radio"] p {
+        font-size: 1.15rem !important;
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
     }
+    /* Sidebar captions keep muted tone */
+    section[data-testid="stSidebar"] .stCaption {
+        color: #D4C4B0 !important;
+        font-size: 0.8rem !important;
+    }
+
+    /* --- Sidebar header --- */
     section[data-testid="stSidebar"] .sidebar-header {
         background: linear-gradient(180deg, #4A3520, #3B2A1A);
         padding: 1.2rem 1rem 0.8rem 1rem;
@@ -49,8 +80,8 @@ CUSTOM_CSS = """
         color: #C4A88C; font-size: 0.8rem; margin: 0.2rem 0 0 0;
     }
 
-    /* --- DOE sidebar call-to-action --- */
-    .doe-sidebar-label {
+    /* --- Sidebar section labels --- */
+    .sidebar-section-label {
         color: #C4734F !important;
         font-size: 0.6rem !important;
         font-weight: 700 !important;
@@ -59,17 +90,50 @@ CUSTOM_CSS = """
         margin: 1rem 0 0.3rem 0 !important;
         padding: 0;
     }
+
+    /* --- App selector buttons — BIG and prominent --- */
+    section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"] button {
+        font-size: 1.15rem !important;
+        font-weight: 800 !important;
+        padding: 0.8rem 0.3rem !important;
+        min-height: 64px !important;
+        border-radius: 10px !important;
+        border-width: 2px !important;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"] button[kind="primary"] {
+        background: #C4734F !important;
+        border-color: #C4734F !important;
+        color: #FFFFFF !important;
+        box-shadow: 0 4px 12px rgba(196, 115, 79, 0.4);
+    }
+    section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"] button[kind="primary"]:hover {
+        background: #D4835F !important;
+        border-color: #D4835F !important;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"] button[kind="secondary"] {
+        background: rgba(255, 255, 255, 0.08) !important;
+        border: 2px solid #6B5A48 !important;
+        color: #D4C4B0 !important;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"] button[kind="secondary"]:hover {
+        background: rgba(255, 255, 255, 0.15) !important;
+        border-color: #C4734F !important;
+        color: #FFFFFF !important;
+    }
+
+    /* --- Other sidebar buttons (non-selector) --- */
+    section[data-testid="stSidebar"] button {
+        color: #F0E6D8 !important;
+    }
     section[data-testid="stSidebar"] button[kind="primary"] {
         background: #C4734F !important;
         border-color: #C4734F !important;
         font-weight: 600;
         border-radius: 4px;
-        transition: all 0.15s ease;
+        color: #FFFFFF !important;
     }
-    section[data-testid="stSidebar"] button[kind="primary"]:hover {
-        background: #D4835F !important;
-        border-color: #D4835F !important;
-        box-shadow: 0 2px 8px rgba(196, 115, 79, 0.4);
+    section[data-testid="stSidebar"] button[kind="secondary"] {
+        color: #D4C4B0 !important;
     }
 
     /* --- Metric cards --- */
@@ -89,7 +153,7 @@ CUSTOM_CSS = """
         font-size: 1.6rem; font-weight: 700; color: #2C1E0F;
     }
 
-    /* --- Buttons --- */
+    /* --- Main area buttons --- */
     button[kind="primary"] {
         border-radius: 4px; font-weight: 600;
         background: #C4734F; border-color: #C4734F;
@@ -163,12 +227,16 @@ CUSTOM_CSS = """
     }
 
     /* --- Tabs --- */
-    button[data-testid="stBaseButton-secondary"] {
-        color: #5C3D2A;
+    .stTabs [role="tab"] {
+        font-size: 0.95rem;
+        font-weight: 600;
+        padding: 0.6rem 1.4rem;
+        color: #8C735B;
     }
-    button[data-testid="stBaseButton-secondary"][aria-selected="true"] {
+    .stTabs [role="tab"][aria-selected="true"] {
         color: #C4734F;
-        border-bottom-color: #C4734F;
+        border-bottom: 3px solid #C4734F;
+        background: linear-gradient(0deg, rgba(196,115,79,0.08), transparent);
     }
 
     /* --- Select boxes --- */
@@ -184,29 +252,105 @@ CUSTOM_CSS = """
 """
 
 
+# ---------------------------------------------------------------------------
+# Sub-app renderers
+# ---------------------------------------------------------------------------
+
+def _render_spc(repo: DataRepository):
+    """SPC sub-app: sidebar (role + data summary) + page routing."""
+    role, page, param = render_spc_sidebar(repo)
+
+    if role == "Operator" and page == "Data Entry":
+        render_data_entry(repo)
+    elif role == "Engineer" and page == "SPC Analysis":
+        render_spc_analysis(repo, param)
+    elif role == "Manager" and page == "Dashboard":
+        render_dashboard(repo)
+    elif role == "Admin" and page == "Data Management":
+        render_data_manager(repo)
+
+
+def _render_doe(repo: DataRepository):
+    """DOE sub-app: own sidebar + wizard main content."""
+    render_doe_page(repo)
+
+
+# ---------------------------------------------------------------------------
+# App registry — add new apps here
+# ---------------------------------------------------------------------------
+
+APPS = [
+    {
+        "key": "SPC",
+        "icon": "📊",
+        "title": "SPC",
+        "subtitle": "Statistical Process Control",
+        "render": _render_spc,
+    },
+    {
+        "key": "DOE",
+        "icon": "🧪",
+        "title": "DOE",
+        "subtitle": "Design of Experiments",
+        "render": _render_doe,
+    },
+    # Future apps — just add an entry here:
+    # {"key": "LAB", "icon": "🔬", "title": "Lab", "subtitle": "Lab Management",
+    #  "render": _render_lab},
+]
+
+
+# ---------------------------------------------------------------------------
+# Hub main
+# ---------------------------------------------------------------------------
+
 def main():
-    st.set_page_config(page_title="SPC App", page_icon="📊", layout="wide")
+    st.set_page_config(page_title="Quality Lab", page_icon="🔬", layout="wide")
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
     if "repo" not in st.session_state:
         st.session_state.repo = SqliteRepository(DB_FILE)
+    if "current_app" not in st.session_state:
+        st.session_state.current_app = "SPC"
 
-    role, page, param = render_sidebar(st.session_state.repo)
+    repo = st.session_state.repo
+    current = st.session_state.current_app
 
-    if role == "Operator" and page == "Data Entry":
-        render_data_entry(st.session_state.repo)
+    # --- Hub sidebar: dynamic header + app selector ---
+    with st.sidebar:
+        app_info = next(a for a in APPS if a["key"] == current)
+        st.markdown(f"""
+        <div class="sidebar-header">
+            <h1>{app_info['icon']}  {app_info['title']}</h1>
+            <p>{app_info['subtitle']}</p>
+        </div>
+        """, unsafe_allow_html=True)
 
-    elif role == "Engineer" and page == "SPC Analysis":
-        render_spc_analysis(st.session_state.repo, param)
+        # App selector — big buttons
+        st.markdown(
+            '<p class="sidebar-section-label">APPLICATION</p>',
+            unsafe_allow_html=True,
+        )
+        cols = st.columns(len(APPS))
+        for i, app in enumerate(APPS):
+            with cols[i]:
+                is_active = current == app["key"]
+                if st.button(
+                    f"{app['icon']}  {app['title']}",
+                    use_container_width=True,
+                    type="primary" if is_active else "secondary",
+                    key=f"app_btn_{app['key']}",
+                ):
+                    st.session_state.current_app = app["key"]
+                    st.rerun()
 
-    elif role == "Engineer" and page == "DOE":
-        render_doe_page(st.session_state.repo)
+        st.divider()
 
-    elif role == "Manager" and page == "Dashboard":
-        render_dashboard(st.session_state.repo)
-
-    elif role == "Admin" and page == "Data Management":
-        render_data_manager(st.session_state.repo)
+    # --- Delegate to selected sub-app ---
+    for app in APPS:
+        if app["key"] == current:
+            app["render"](repo)
+            break
 
 
 if __name__ == "__main__":

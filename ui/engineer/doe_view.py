@@ -33,9 +33,34 @@ def _get_doe_repo() -> DoeRepository:
 
 
 def render_doe_page(repo: DataRepository):
-    """Main entry point for the DOE page."""
+    """Main entry point for the DOE sub-app.
+
+    Renders its own sidebar section (below the hub app selector) and the
+    wizard main content.
+    """
     doe_repo = _get_doe_repo()
 
+    # --- DOE sidebar ---
+    with st.sidebar:
+        st.markdown(
+            '<p class="sidebar-section-label">DOE SESSION</p>',
+            unsafe_allow_html=True,
+        )
+        session = st.session_state.get("doe_session")
+        if session:
+            name = session.get("name", "") or "Untitled"
+            step = st.session_state.get("doe_step", "landing")
+            entry_type = session.get("entry_type", "—").replace("_", " ").title()
+            st.caption(f"Name: {name}")
+            st.caption(f"Type: {entry_type}")
+            st.caption(f"Step: {step.title()}")
+            st.divider()
+            if st.button("New DOE", use_container_width=True, key="doe_sidebar_new"):
+                _reset_doe()
+        else:
+            st.caption("No active session")
+
+    # --- Main content ---
     st.title("Design of Experiments")
 
     # Initialize wizard state
