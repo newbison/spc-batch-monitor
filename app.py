@@ -239,6 +239,32 @@ CUSTOM_CSS = """
         background: linear-gradient(0deg, rgba(196,115,79,0.08), transparent);
     }
 
+    /* --- Top role bar --- */
+    .role-bar-wrapper button {
+        font-size: 1.05rem !important;
+        font-weight: 700 !important;
+        padding: 0.7rem 0.3rem !important;
+        min-height: 52px !important;
+        border-radius: 8px !important;
+        border-width: 2px !important;
+    }
+    .role-bar-wrapper button[kind="primary"] {
+        background: #C4734F !important;
+        border-color: #C4734F !important;
+        color: #FFFFFF !important;
+        box-shadow: 0 2px 8px rgba(196, 115, 79, 0.3);
+    }
+    .role-bar-wrapper button[kind="secondary"] {
+        background: white !important;
+        border: 2px solid #E0D3C0 !important;
+        color: #8C735B !important;
+    }
+    .role-bar-wrapper button[kind="secondary"]:hover {
+        border-color: #C4734F !important;
+        color: #C4734F !important;
+        background: #FAF6F0 !important;
+    }
+
     /* --- Select boxes --- */
     .stSelectbox div[data-baseweb="select"] > div {
         background: white;
@@ -256,9 +282,43 @@ CUSTOM_CSS = """
 # Sub-app renderers
 # ---------------------------------------------------------------------------
 
+ROLES = ["Operator", "Engineer", "Manager", "Admin"]
+
+PAGE_MAP = {
+    "Operator": "Data Entry",
+    "Engineer": "SPC Analysis",
+    "Manager": "Dashboard",
+    "Admin": "Data Management",
+}
+
+
+def _render_role_bar() -> str:
+    """Render the role selector as a horizontal button bar at the top of main content."""
+    if "role_selector" not in st.session_state:
+        st.session_state.role_selector = "Operator"
+
+    st.markdown('<div class="role-bar-wrapper">', unsafe_allow_html=True)
+    cols = st.columns(len(ROLES), gap="small")
+    for i, role in enumerate(ROLES):
+        with cols[i]:
+            if st.button(
+                role,
+                use_container_width=True,
+                key=f"role_btn_{role}",
+                type="primary" if st.session_state.role_selector == role else "secondary",
+            ):
+                st.session_state.role_selector = role
+                st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    return st.session_state.role_selector
+
+
 def _render_spc(repo: DataRepository):
-    """SPC sub-app: sidebar (role + data summary) + page routing."""
-    role, page, param = render_spc_sidebar(repo)
+    """SPC sub-app: top role bar + sidebar (data summary) + page routing."""
+    role = _render_role_bar()
+    page = PAGE_MAP.get(role, "Data Entry")
+    param = render_spc_sidebar(repo, role, page)
 
     if role == "Operator" and page == "Data Entry":
         render_data_entry(repo)
