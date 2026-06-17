@@ -418,18 +418,18 @@ def main():
                 unsafe_allow_html=True,
             )
             for link in EXTERNAL_LINKS:
-                st.markdown(
-                    f'<a href="{link["url"]}" target="_blank" rel="noopener" '
+                st.html(
+                    f'<a href="{link["url"]}" target="_blank" rel="noopener noreferrer" '
                     f'style="display:block; text-align:center; '
                     f'font-size:1.15rem; font-weight:800; '
                     f'padding:0.8rem 0.3rem; min-height:64px; '
                     f'line-height:64px; text-decoration:none; '
                     f'border-radius:10px; border:2px solid #6B5A48; '
                     f'background:rgba(255,255,255,0.08); color:#D4C4B0; '
-                    f'transition:all 0.15s ease;">'
+                    f'transition:all 0.15s ease; cursor:pointer;" '
+                    f'onclick="window.open(\'{link["url"]}\',\'_blank\',\'noopener,noreferrer\');return false;">'
                     f'{link["icon"]}  {link["title"]}  ↗'
-                    f'</a>',
-                    unsafe_allow_html=True,
+                    f'</a>'
                 )
 
         st.divider()
