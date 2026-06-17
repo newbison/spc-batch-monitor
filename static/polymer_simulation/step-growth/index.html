@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Step-Growth Condensation</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <div id="app">
+    <header id="header">
+      <h1>Step-Growth Condensation</h1>
+      <a href="../index.html" class="back-link">← Lab</a>
+      <div id="stage-badges">
+        <span id="badge-monomers" class="badge active">● Monomers</span>
+        <span id="badge-reacting" class="badge">○ Reacting</span>
+        <span id="badge-chains" class="badge">○ Chains</span>
+        <span id="badge-saturated" class="badge">○ Saturated</span>
+      </div>
+    </header>
+    <main id="main">
+      <div id="canvas-container">
+        <canvas id="sim-canvas"></canvas>
+        <div id="callout" class="hidden">
+          <div id="callout-title"></div>
+          <canvas id="callout-canvas" width="140" height="100"></canvas>
+        </div>
+      </div>
+      <aside id="panel">
+        <section class="panel-section">
+          <h2>Preset</h2>
+          <div class="param">
+            <select id="preset-select">
+              <option value="equal" selected>Equal A / B (DP unlimited)</option>
+              <option value="nylon66">Nylon-6,6 (balanced)</option>
+              <option value="b-excess">B in Excess (MW limited)</option>
+              <option value="a-excess">A in Excess (MW limited)</option>
+            </select>
+          </div>
+        </section>
+        <section class="panel-section">
+          <h2>Parameters</h2>
+          <div class="param">
+            <label>Diamine A <span id="val-monomer-a">500</span></label>
+            <input type="range" id="slider-monomer-a" min="100" max="2000" value="500" step="10">
+          </div>
+          <div class="param">
+            <label>Diacid B <span id="val-monomer-b">500</span></label>
+            <input type="range" id="slider-monomer-b" min="100" max="2000" value="500" step="10">
+          </div>
+          <div class="param">
+            <label>Reaction rate <span id="val-rate">5.0×</span></label>
+            <input type="range" id="slider-rate" min="0.5" max="20.0" value="5.0" step="0.1">
+          </div>
+        </section>
+        <section class="panel-section">
+          <h2>Time Controls</h2>
+          <div class="btn-row">
+            <button id="btn-play">▶ Play</button>
+            <button id="btn-pause">⏸ Pause</button>
+            <button id="btn-reset">↺ Reset</button>
+          </div>
+          <div class="param">
+            <label>Speed <span id="val-speed">10×</span></label>
+            <input type="range" id="slider-speed" min="0.25" max="30" value="10" step="0.25">
+          </div>
+        </section>
+        <section class="panel-section">
+          <h2>Readouts</h2>
+          <dl id="readouts">
+            <dt>Time</dt><dd id="ro-time">0.0s</dd>
+            <dt>Conversion (p)</dt><dd id="ro-conversion">0.0%</dd>
+            <dt>Degree of Polym.</dt><dd id="ro-dp">0.0</dd>
+            <dt>Active chains</dt><dd id="ro-chains">0</dd>
+            <dt>Saturated</dt><dd id="ro-dead">0</dd>
+            <dt>Free A (diamine)</dt><dd id="ro-free-a">0</dd>
+            <dt>Free B (diacid)</dt><dd id="ro-free-b">0</dd>
+            <dt>Bonds (H₂O)</dt><dd id="ro-byproduct">0</dd>
+            <dt>Max DP</dt><dd id="ro-max-dp">∞</dd>
+          </dl>
+        </section>
+      </aside>
+    </main>
+  </div>
+  <script src="bundle.js"></script>
+</body>
+</html>

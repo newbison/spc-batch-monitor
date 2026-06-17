@@ -362,7 +362,7 @@ EXTERNAL_LINKS = [
     {
         "icon": "🧬",
         "title": "Polymer Simulation",
-        "url": "https://newbison.github.io/polymer_simulation/",
+        "url": "/app/static/polymer_simulation/index.html",
     },
 ]
 

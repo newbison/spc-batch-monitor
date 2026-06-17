@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Copolymerization Simulator</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <div id="app">
+    <header id="header">
+      <h1>Copolymerization Simulator</h1>
+      <a href="../index.html" class="back-link">← Lab</a>
+    </header>
+    <main id="main">
+      <div id="canvas-container">
+        <canvas id="sim-canvas"></canvas>
+        <div id="callout" class="hidden">
+          <div id="callout-title"></div>
+          <canvas id="callout-canvas" width="140" height="100"></canvas>
+        </div>
+      </div>
+      <aside id="panel">
+        <section class="panel-section">
+          <h2>Preset</h2>
+          <div class="param">
+            <select id="preset-select">
+              <option value="2eha-aa" selected>2EHA / Acrylic Acid</option>
+              <option value="ideal">Ideal (r₁=r₂=1)</option>
+              <option value="alternating">Alternating (r₁=r₂≈0)</option>
+              <option value="styrene-an">Styrene / Acrylonitrile</option>
+            </select>
+          </div>
+        </section>
+        <section class="panel-section">
+          <h2>Parameters</h2>
+          <div class="param">
+            <label>Initiator count <span id="val-initiator">10</span></label>
+            <input type="range" id="slider-initiator" min="1" max="20" value="10" step="1">
+          </div>
+          <div class="param">
+            <label>M₁ count (2EHA) <span id="val-monomer-a">950</span></label>
+            <input type="range" id="slider-monomer-a" min="10" max="1000" value="950" step="10">
+          </div>
+          <div class="param">
+            <label>M₂ count (AA) <span id="val-monomer-b">50</span></label>
+            <input type="range" id="slider-monomer-b" min="1" max="200" value="50" step="1">
+          </div>
+          <div class="param">
+            <label>r₁ (k₁₁/k₁₂) <span id="val-r1">0.35</span></label>
+            <input type="range" id="slider-r1" min="0.01" max="5.0" value="0.35" step="0.01">
+          </div>
+          <div class="param">
+            <label>r₂ (k₂₂/k₂₁) <span id="val-r2">2.50</span></label>
+            <input type="range" id="slider-r2" min="0.01" max="5.0" value="2.50" step="0.01">
+          </div>
+          <div class="param">
+            <label>Reaction rate <span id="val-rate">5.0×</span></label>
+            <input type="range" id="slider-rate" min="0.1" max="10.0" value="5.0" step="0.1">
+          </div>
+          <div class="param">
+            <label><input type="checkbox" id="chk-alternating"> Strict alternating (ABABAB…)</label>
+          </div>
+          <div class="param">
+            <label>Chain transfer (C_Tr) <span id="val-ct">0.00</span></label>
+            <input type="range" id="slider-ct" min="0" max="0.5" value="0" step="0.01">
+          </div>
+        </section>
+        <section class="panel-section">
+          <h2>Time Controls</h2>
+          <div class="btn-row">
+            <button id="btn-play">▶ Play</button>
+            <button id="btn-pause">⏸ Pause</button>
+            <button id="btn-reset">↺ Reset</button>
+          </div>
+          <div class="param">
+            <label>Speed <span id="val-speed">10×</span></label>
+            <input type="range" id="slider-speed" min="0.25" max="30" value="10" step="0.25">
+          </div>
+        </section>
+        <section class="panel-section">
+          <h2>Composition Diagram</h2>
+          <canvas id="diagram-canvas" width="240" height="200" style="display:block;margin:0 auto;background:#0d1b2a;border-radius:4px;"></canvas>
+        </section>
+        <section class="panel-section">
+          <h2>Readouts</h2>
+          <dl id="readouts">
+            <dt>Time</dt><dd id="ro-time">0.0s</dd>
+            <dt>Conversion</dt><dd id="ro-conversion">0%</dd>
+            <dt>Cumulative F₁</dt><dd id="ro-cumulative-f1">0.950</dd>
+            <dt>Instant F₁</dt><dd id="ro-instant-f1">0.950</dd>
+            <dt>M<sub>n</sub></dt><dd id="ro-mn">—</dd>
+            <dt>M<sub>w</sub></dt><dd id="ro-mw">—</dd>
+            <dt>PDI</dt><dd id="ro-pdi">—</dd>
+            <dt>Active chains</dt><dd id="ro-chains">0</dd>
+            <dt>Dead chains</dt><dd id="ro-dead">0</dd>
+            <dt>Free M₁</dt><dd id="ro-free-a">0</dd>
+            <dt>Free M₂</dt><dd id="ro-free-b">0</dd>
+          </dl>
+        </section>
+      </aside>
+    </main>
+  </div>
+  <script src="bundle.js"></script>
+</body>
+</html>

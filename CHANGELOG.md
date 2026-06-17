@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-06-17
+
+- **Hub architecture** — SPC and DOE are now independent sub-apps sharing a unified shell (`app.py`)
+  - New app selector sidebar with prominent toggle buttons (SPC / DOE)
+  - Each sub-app owns its sidebar section + main content; adding a new app is two steps (write a render function, add an `APPS` registry entry)
+  - External tool links in sidebar (e.g. Polymer Simulation)
+- **Role selector moved** from sidebar to a horizontal button bar at the top of the main content area — always visible, one click to switch
+- **Forge AI rebrand** — page title, sidebar header, README, and all CSS updated from "Quality Lab" to "Forge AI: AI-Powered Materials Intelligence"
+- **Info bar removed** from the Engineer page — the stats line ("SPC ANALYSIS | 120 rows · 2 formulas · …") and its dead CSS are gone
+- **README rewritten** for the hub architecture with updated feature list, architecture diagram, and screenshots
+
+## 2026-06-16
+
+- **Self-contained factorial generators** (`doe/_factorial.py`) — replaced pyDOE2 dependency with pure NumPy implementations of `fullfact`, `fracfact`, and `bbdesign`. Works on all Python versions (3.9+), no patching needed
+- **Streamlit Cloud deployment fixes** — pinned Python to 3.11, added `packages.txt` for system deps, fixed pyDOE2 version pin (1.3.0, not 1.3.1)
+- **DOE UX polish**
+  - Replaced `st.data_editor` with individual Streamlit widgets for factor/response definition (avoids stale template copies)
+  - Session-state-managed Add/Remove buttons for factor rows
+  - Reliable capture entry form with one-sided response spec support
+  - Plots render inline during the optimize step
+- Cleaned local file paths from plan documents
+
 ## 2026-06-15
 
 - **DOE (Design of Experiments) page** — full wizard workflow for Engineer role

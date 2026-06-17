@@ -9,3 +9,4 @@ data/uploads/*.csv
 node_modules/
 data/spc.db
 *.pptx
+/polymer_simulation/
