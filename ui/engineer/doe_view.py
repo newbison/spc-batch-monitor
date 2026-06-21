@@ -625,30 +625,33 @@ def _render_setup_section(session: dict):
         ]
 
     for i, row in enumerate(st.session_state.doe_factors_list):
-        is_cat = row.get("type") == "categorical"
+        # -- Always render name + type first (same layout, avoids widget key conflict) --
+        c_name, c_type, c_del = st.columns([3, 2, 1])
+        with c_name:
+            row["name"] = st.text_input("Name", row.get("name", ""), key=f"fac_n_{i}",
+                                        label_visibility="collapsed", placeholder=f"Factor {i+1}")
+        with c_type:
+            cur_type = row.get("type", "continuous")
+            row["type"] = st.selectbox(
+                "Type", ["continuous", "categorical"],
+                index=1 if cur_type == "categorical" else 0,
+                key=f"fac_t_{i}", label_visibility="collapsed",
+            )
+        with c_del:
+            if len(st.session_state.doe_factors_list) > 1:
+                if st.button("✕", key=f"fac_del_{i}"):
+                    st.session_state.doe_factors_list.pop(i)
+                    st.rerun()
+
+        is_cat = row["type"] == "categorical"
 
         if is_cat:
-            # Categorical: name + type + level labels via select boxes
-            c_name, c_type, c_del = st.columns([3, 2, 1])
-            with c_name:
-                row["name"] = st.text_input("Name", row.get("name", ""), key=f"fac_n_{i}",
-                                            label_visibility="collapsed", placeholder=f"Factor {i+1}")
-            with c_type:
-                row["type"] = st.selectbox("Type", ["continuous", "categorical"],
-                                           index=1, key=f"fac_t_{i}", label_visibility="collapsed")
-            with c_del:
-                if len(st.session_state.doe_factors_list) > 1:
-                    if st.button("✕", key=f"fac_del_{i}"):
-                        st.session_state.doe_factors_list.pop(i)
-                        st.rerun()
-
-            # Level inputs — select boxes with predefined + custom options
+            # Ensure levels exist (migrate from continuous)
             if "levels" not in row or not row["levels"]:
                 row["levels"] = ["A", "B"]
             PRESET_LEVELS = ["A", "B", "C", "D", "Low", "High", "Control", "Treatment", "Yes", "No"]
             for li in range(len(row["levels"])):
                 lv = row["levels"][li]
-                # Build options: presets + current value + custom trigger
                 options = list(PRESET_LEVELS)
                 if lv and lv not in options:
                     options.insert(0, lv)
@@ -682,14 +685,8 @@ def _render_setup_section(session: dict):
                 st.rerun()
             st.caption("")
         else:
-            # Continuous: name + type + optional low/high
-            c_name, c_type, c_low, c_high, c_del = st.columns([3, 2, 2, 2, 1])
-            with c_name:
-                row["name"] = st.text_input("Name", row.get("name", ""), key=f"fac_n_{i}",
-                                            label_visibility="collapsed", placeholder=f"Factor {i+1}")
-            with c_type:
-                row["type"] = st.selectbox("Type", ["continuous", "categorical"],
-                                           index=0, key=f"fac_t_{i}", label_visibility="collapsed")
+            # Continuous: optional low/high bounds
+            c_low, c_high = st.columns(2)
             with c_low:
                 low_val = row.get("low")
                 row["low"] = st.number_input("Lower bound", value=float(low_val) if low_val is not None else 0.0,
@@ -702,11 +699,6 @@ def _render_setup_section(session: dict):
                                               key=f"fac_h_{i}", label_visibility="collapsed",
                                               step=0.01, format="%.4f",
                                               help="Upper bound (optional — any numeric value)")
-            with c_del:
-                if len(st.session_state.doe_factors_list) > 1:
-                    if st.button("✕", key=f"fac_del_{i}"):
-                        st.session_state.doe_factors_list.pop(i)
-                        st.rerun()
 
     if st.button("+ Add Factor", key="doe_add_f"):
         st.session_state.doe_factors_list.append(
