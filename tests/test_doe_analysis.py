@@ -245,6 +245,7 @@ def test_fit_linear_returns_anova():
     assert "lack_of_fit_p" in model
     assert "n_obs" in model
     assert "n_params" in model
+    assert "model_type" in model
 
     # ANOVA structure
     anova = model["anova"]
@@ -269,11 +270,14 @@ def test_fit_linear_returns_anova():
     assert model["n_obs"] == 8
     assert model["n_params"] > 0  # at least intercept + 1 term
     assert 0 < model["r_squared"] <= 1.0
-    assert model["rmse"] > 0
+    assert 0 <= model["r_squared_adj"] <= 1.0
+    assert model["rmse"] == 0.0
 
     # Old keys still present (backward compat)
     assert "coefficients" in model
     assert len(model["coefficients"]) > 0
+
+    assert model["model_type"] == "linear"
 
 
 def test_fit_linear_anova_values_perfect_fit():
@@ -339,6 +343,25 @@ def test_fit_rsm_returns_anova():
 
     assert "anova" in model
     assert "residuals" in model
+
+    # Residuals sub-key validation
+    res = model["residuals"]
+    assert "run" in res
+    assert "observed" in res
+    assert "predicted" in res
+    assert "residual" in res
+    assert "studentized" in res
+    assert len(res["run"]) == len(design)
+
+    # ANOVA sub-key validation
+    anova = model["anova"]
+    assert "source" in anova
+    assert "ss" in anova
+    assert "df" in anova
+    assert "ms" in anova
+    assert "f" in anova
+    assert "p" in anova
+
     assert "has_curvature" in model
     assert "curvature_p_value" in model
 
