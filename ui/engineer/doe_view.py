@@ -621,7 +621,7 @@ def _render_setup_section(session: dict):
     if "doe_factors_list" not in st.session_state:
         existing = session.get("factors_json", [])
         st.session_state.doe_factors_list = existing if existing else [
-            {"name": "", "type": "continuous", "low": 0.0, "high": 100.0}
+            {"name": "", "type": "continuous", "low": 0.0, "high": 1.0}
         ]
 
     for i, row in enumerate(st.session_state.doe_factors_list):
@@ -680,7 +680,7 @@ def _render_setup_section(session: dict):
                                              help="Lower bound (optional — any numeric value)")
             with c_high:
                 high_val = row.get("high")
-                row["high"] = st.number_input("Upper bound", value=float(high_val) if high_val is not None else 100.0,
+                row["high"] = st.number_input("Upper bound", value=float(high_val) if high_val is not None else 1.0,
                                               key=f"fac_h_{i}", label_visibility="collapsed",
                                               step=0.01, format="%.4f",
                                               help="Upper bound (optional — any numeric value)")
@@ -692,7 +692,7 @@ def _render_setup_section(session: dict):
 
     if st.button("+ Add Factor", key="doe_add_f"):
         st.session_state.doe_factors_list.append(
-            {"name": "", "type": "continuous", "low": 0.0, "high": 100.0}
+            {"name": "", "type": "continuous", "low": 0.0, "high": 1.0}
         )
         st.rerun()
 
@@ -701,7 +701,7 @@ def _render_setup_section(session: dict):
     if "doe_responses_list" not in st.session_state:
         existing = session.get("responses_json", [])
         st.session_state.doe_responses_list = existing if existing else [
-            {"name": "", "goal": "maximize", "target": None, "low": 0.0, "high": 100.0}
+            {"name": "", "goal": "maximize", "target": None, "low": 0.0, "high": 1.0}
         ]
 
     for i, row in enumerate(st.session_state.doe_responses_list):
@@ -724,7 +724,7 @@ def _render_setup_section(session: dict):
                 st.caption("")
         with c4:
             if goal in ("minimize", "target"):
-                row["high"] = st.number_input("Max acceptable", float(row.get("high", 100)),
+                row["high"] = st.number_input("Max acceptable", float(row.get("high", 1)),
                                               key=f"resp_h_{i}", label_visibility="collapsed",
                                               step=0.01, format="%.4f",
                                               help="Maximum acceptable value")
@@ -746,7 +746,7 @@ def _render_setup_section(session: dict):
 
     if st.button("+ Add Response", key="doe_add_r"):
         st.session_state.doe_responses_list.append(
-            {"name": "", "goal": "maximize", "target": None, "low": 0.0, "high": 100.0}
+            {"name": "", "goal": "maximize", "target": None, "low": 0.0, "high": 1.0}
         )
         st.rerun()
 
