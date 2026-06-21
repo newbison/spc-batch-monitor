@@ -87,6 +87,74 @@ def generate_box_behnken(factors: list[dict], n_center: int = 3) -> pd.DataFrame
     return _build_design_df(coded, factors)
 
 
+def generate_ccd(
+    factors: list[dict],
+    alpha: str | float = "rotatable",
+    n_center: int = 3,
+) -> pd.DataFrame:
+    """Generate a Central Composite Design (CCD) for RSM.
+
+    Parameters
+    ----------
+    factors : list of dict
+        Factor definitions (name, type, low, high). All must be continuous.
+    alpha : str or float
+        "rotatable" (default), "orthogonal", "face-centered" (alpha=1),
+        or a custom float.
+    n_center : int
+        Number of center points.
+
+    Returns
+    -------
+    pd.DataFrame
+        Design matrix with columns: run, <factor_names>. Coded -1/0/+1/+-alpha.
+    """
+    k = len(factors)
+    if k < 1:
+        raise ValueError("CCD requires at least 1 factor")
+
+    # Resolve alpha
+    if alpha == "rotatable":
+        a = 2 ** (k / 4)
+    elif alpha == "orthogonal":
+        # Orthogonal blocking CCD — approximate with standard formula
+        n_factorial = 2 ** k
+        a = np.sqrt((np.sqrt(n_factorial * (k + n_center + 2)) - np.sqrt(n_factorial)) / 2)
+    elif alpha == "face-centered":
+        a = 1.0
+    elif isinstance(alpha, (int, float)):
+        a = float(alpha)
+    else:
+        raise ValueError(f"Unknown alpha: {alpha}")
+
+    # 2^k factorial portion
+    levels = [2] * k
+    raw = fullfact(levels)
+    factorial_coded = np.where(raw == 0, -1, 1).astype(float)
+
+    # Axial portion: one factor at +/-alpha, others at 0
+    axial_rows = []
+    for i in range(k):
+        for sign in [-1, 1]:
+            row = np.zeros(k)
+            row[i] = sign * a
+            axial_rows.append(row)
+    axial_coded = np.array(axial_rows)
+
+    # Combine
+    coded = np.vstack([factorial_coded, axial_coded])
+    factor_names = [f["name"] for f in factors]
+    df = pd.DataFrame(coded, columns=factor_names)
+    df = df.round(4)
+    df.insert(0, "run", range(1, len(df) + 1))
+
+    # Center points
+    if n_center > 0:
+        df = add_center_points(df, factor_names, n_center)
+
+    return df
+
+
 def decode_to_actual(coded: pd.DataFrame, factors: list[dict]) -> pd.DataFrame:
     """Decode coded design matrix to actual factor values.
 

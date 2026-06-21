@@ -125,3 +125,70 @@ def test_box_behnken_comment_is_accurate():
     assert len(df) == 17
     center_rows = df[(df["F0"] == 0) & (df["F1"] == 0) & (df["F2"] == 0)]
     assert len(center_rows) == 5
+
+
+def test_ccd_rotatable_2_factors():
+    """CCD with 2 factors, rotatable alpha: 2k factorial + 2k axial + cp."""
+    from doe.designs import generate_ccd
+
+    factors = [
+        {"name": "T", "type": "continuous", "low": 80, "high": 120},
+        {"name": "P", "type": "continuous", "low": 2.0, "high": 4.0},
+    ]
+    df = generate_ccd(factors, alpha="rotatable", n_center=3)
+
+    # 2 factors: 4 factorial + 4 axial + 3 center = 11 runs
+    assert len(df) == 11
+    assert "run" in df.columns
+    assert "T" in df.columns
+    assert "P" in df.columns
+
+    # Rotatable alpha for k=2: 2^(2/4) = 1.414
+    axial_rows = df[(df["T"].abs() > 1.0) | (df["P"].abs() > 1.0)]
+    assert len(axial_rows) == 4
+    # Axial values should be +/-alpha (1.414)
+    axial_vals = axial_rows["T"].abs().tolist() + axial_rows["P"].abs().tolist()
+    axial_vals = [v for v in axial_vals if v > 1.0]
+    for v in axial_vals:
+        assert abs(v - 1.414) < 0.01
+
+    # Center points should be all zeros
+    center_rows = df[(df["T"] == 0.0) & (df["P"] == 0.0)]
+    assert len(center_rows) == 3
+
+
+def test_ccd_face_centered():
+    """Face-centered CCD: alpha = 1, axial points are on the faces."""
+    from doe.designs import generate_ccd
+
+    factors = [
+        {"name": "A", "type": "continuous", "low": 0, "high": 10},
+    ]
+    df = generate_ccd(factors, alpha="face-centered", n_center=2)
+
+    # 1 factor: 2 factorial + 2 axial + 2 center = 6 runs
+    assert len(df) == 6
+
+    # All values should be -1, 0, or +1 (face-centered)
+    for val in df["A"]:
+        assert val in (-1.0, 0.0, 1.0), f"Got {val}, expected -1, 0, or 1"
+
+
+def test_ccd_3_factors():
+    """CCD with 3 factors: 8 factorial + 6 axial + n_center."""
+    from doe.designs import generate_ccd
+
+    factors = [
+        {"name": "A", "type": "continuous", "low": 0, "high": 100},
+        {"name": "B", "type": "continuous", "low": 0, "high": 100},
+        {"name": "C", "type": "continuous", "low": 0, "high": 100},
+    ]
+    df = generate_ccd(factors, alpha="rotatable", n_center=4)
+
+    # 3 factors: 8 factorial + 6 axial + 4 center = 18
+    assert len(df) == 18
+
+    # Rotatable alpha for k=3: 2^(3/4) ≈ 1.682
+    alpha = 2 ** (3 / 4)
+    axial_rows = df[(df["A"].abs() > 1.0) | (df["B"].abs() > 1.0) | (df["C"].abs() > 1.0)]
+    assert len(axial_rows) == 6
