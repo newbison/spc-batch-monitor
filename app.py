@@ -146,7 +146,7 @@ CUSTOM_CSS = """
     }
     div[data-testid="stMetric"] > div:first-child {gap: 0;}
     div[data-testid="stMetricLabel"] {
-        font-size: 0.72rem; color: #8C735B; font-weight: 600;
+        font-size: 0.72rem; color: #4A3728; font-weight: 600;
         text-transform: uppercase; letter-spacing: 0.05em;
     }
     div[data-testid="stMetricValue"] {
@@ -157,6 +157,7 @@ CUSTOM_CSS = """
     button[kind="primary"] {
         border-radius: 4px; font-weight: 600;
         background: #C4734F; border-color: #C4734F;
+        color: #FFFFFF !important;
         transition: all 0.15s ease;
     }
     button[kind="primary"]:hover {
@@ -208,7 +209,7 @@ CUSTOM_CSS = """
     /* --- Download buttons --- */
     .stDownloadButton button {
         border-radius: 4px; font-weight: 600;
-        border: 1px solid #C4734F; color: #C4734F;
+        border: 1px solid #B56240; color: #B56240;
         background: transparent;
     }
     .stDownloadButton button:hover {
@@ -231,7 +232,7 @@ CUSTOM_CSS = """
         font-size: 0.95rem;
         font-weight: 600;
         padding: 0.6rem 1.4rem;
-        color: #8C735B;
+        color: #4A3728;
     }
     .stTabs [role="tab"][aria-selected="true"] {
         color: #C4734F;
@@ -257,7 +258,7 @@ CUSTOM_CSS = """
     .role-bar-wrapper button[kind="secondary"] {
         background: white !important;
         border: 2px solid #E0D3C0 !important;
-        color: #8C735B !important;
+        color: #4A3728 !important;
     }
     .role-bar-wrapper button[kind="secondary"]:hover {
         border-color: #C4734F !important;
@@ -270,9 +271,16 @@ CUSTOM_CSS = """
         background: white;
         border: 1px solid #E0D3C0;
         border-radius: 4px;
+        color: #2C1E0F !important;
     }
     .stSelectbox div[data-baseweb="select"] > div:hover {
         border-color: #C4734F;
+    }
+
+    /* --- Input fields on light backgrounds --- */
+    div[data-baseweb="input"] input,
+    div[data-baseweb="input"] textarea {
+        color: #2C1E0F !important;
     }
 </style>
 """
