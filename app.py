@@ -91,6 +91,34 @@ CUSTOM_CSS = """
         padding: 0;
     }
 
+    /* --- Sidebar input widgets: dark bg, white text, visible borders --- */
+    section[data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] > div {
+        background: #4A3520 !important;
+        border-color: #6B5A48 !important;
+    }
+    section[data-testid="stSidebar"] div[data-baseweb="input"] input,
+    section[data-testid="stSidebar"] div[data-baseweb="input"] textarea,
+    section[data-testid="stSidebar"] input[type="text"],
+    section[data-testid="stSidebar"] .stTextInput input,
+    section[data-testid="stSidebar"] .stNumberInput input {
+        background: #4A3520 !important;
+        border-color: #6B5A48 !important;
+        color: #FFFFFF !important;
+    }
+    /* Sidebar dropdown menu (renders in portal — outside sidebar DOM) */
+    div[data-baseweb="popover"] ul[role="listbox"] li {
+        color: #2C1E0F !important;
+        background: #FFFFFF !important;
+    }
+    div[data-baseweb="popover"] ul[role="listbox"] li:hover {
+        background: #F5EDE3 !important;
+    }
+    /* Selected/highlighted option in dropdown */
+    div[data-baseweb="popover"] ul[role="listbox"] li[aria-selected="true"] {
+        background: #E8D5C0 !important;
+        font-weight: 600;
+    }
+
     /* --- App selector buttons — BIG and prominent --- */
     section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"] button {
         font-size: 1.15rem !important;
