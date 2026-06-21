@@ -516,9 +516,10 @@ def _render_analyze_tab(doe_repo: DoeRepository):
                 st.progress(d)
 
                 # Mini trace plot for first continuous factor
-                for fn in cont_factors[:1]:
-                    if fn in p["traces"]:
-                        trace = p["traces"][fn]
+                for fn_dict in cont_factors[:1]:
+                    fn_name = fn_dict["name"]
+                    if fn_name in p["traces"]:
+                        trace = p["traces"][fn_name]
                         tf = go.Figure(go.Scatter(x=trace["x"], y=trace["y"], mode="lines",
                                                    line=dict(width=2, color="#C4734F")))
                         tf.update_layout(height=100, margin=dict(l=0, r=0, t=0, b=0))
