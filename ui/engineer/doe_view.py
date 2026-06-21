@@ -706,26 +706,26 @@ def _render_setup_section(session: dict):
                                        key=f"resp_g_{i}", label_visibility="collapsed")
         with c3:
             if goal in ("maximize", "target"):
-                row["low"] = st.number_input("Min acceptable", float(row.get("low", 0)),
+                row["low"] = st.number_input("Min acceptable", value=None,
                                              key=f"resp_l_{i}", label_visibility="collapsed",
                                              step=0.01, format="%.4f",
-                                             help="Minimum acceptable value")
+                                             help="Minimum acceptable value (any number)")
             else:
                 st.caption("")
         with c4:
             if goal in ("minimize", "target"):
-                row["high"] = st.number_input("Max acceptable", float(row.get("high", 1)),
+                row["high"] = st.number_input("Max acceptable", value=None,
                                               key=f"resp_h_{i}", label_visibility="collapsed",
                                               step=0.01, format="%.4f",
-                                              help="Maximum acceptable value")
+                                              help="Maximum acceptable value (any number)")
             else:
                 st.caption("")
         with c5:
             if goal == "target":
-                row["target"] = st.number_input("Target", float(row.get("target") or row.get("low", 0)),
+                row["target"] = st.number_input("Target", value=None,
                                                 key=f"resp_t_{i}", label_visibility="collapsed",
                                                 step=0.01, format="%.4f",
-                                                help="Ideal target value")
+                                                help="Ideal target value (any number)")
             else:
                 st.caption("")
         with c6:
