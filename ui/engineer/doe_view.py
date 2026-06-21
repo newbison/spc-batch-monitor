@@ -1,6 +1,7 @@
-"""DOE (Design of Experiments) page — Streamlit wizard UI.
+"""DOE (Design of Experiments) page — 2-tab Streamlit dashboard.
 
-Multi-entry wizard: Landing -> Define -> Design -> Capture -> Analyze -> Optimize.
+Tab 1: DESIGN — Setup -> Type Selection -> Diagnostics -> Run Sheet
+Tab 2: ANALYZE — Data Entry -> ANOVA -> Residuals -> Profiler
 """
 
 import streamlit as st
@@ -14,1096 +15,628 @@ from config import DB_FILE
 from doe.designs import (
     generate_full_factorial,
     generate_fractional_factorial,
+    generate_box_behnken,
+    generate_ccd,
     add_center_points,
     decode_to_actual,
     get_fractional_run_count,
 )
-from doe.analysis import fit_linear, fit_rsm, has_curvature, predict_from_model, _is_center_row
+from doe.analysis import fit_linear, fit_rsm, has_curvature, predict_from_model, _is_center_row, anova_table
 from doe.optimization import optimize as doe_optimize
+from doe.residuals import compute_residuals as compute_residuals_fn, build_residual_plots
+from doe.profiler import compute_profile, compute_overall_desirability
+from doe.evaluate import evaluate_design
 
-# JSON persistence key prefix for session state
 DOE_REPO_KEY = "doe_repo"
 
 
 def _get_doe_repo() -> DoeRepository:
-    """Get or create the DOE repository (shares spc.db)."""
     if DOE_REPO_KEY not in st.session_state:
         st.session_state[DOE_REPO_KEY] = DoeRepository(DB_FILE)
     return st.session_state[DOE_REPO_KEY]
 
 
 def render_doe_page(repo: DataRepository):
-    """Main entry point for the DOE sub-app.
-
-    Renders its own sidebar section (below the hub app selector) and the
-    wizard main content.
-    """
     doe_repo = _get_doe_repo()
 
-    # --- DOE sidebar ---
+    # Init state
+    if "doe_active_tab" not in st.session_state:
+        st.session_state.doe_active_tab = "design"
+    if "doe_session" not in st.session_state:
+        st.session_state.doe_session = None
+    if "doe_session_id" not in st.session_state:
+        st.session_state.doe_session_id = None
+
+    # --- Sidebar ---
     with st.sidebar:
-        st.markdown(
-            '<p class="sidebar-section-label">DOE SESSION</p>',
-            unsafe_allow_html=True,
-        )
-        session = st.session_state.get("doe_session")
+        st.markdown('<p class="sidebar-section-label">DOE SESSION</p>', unsafe_allow_html=True)
+
+        # Tab buttons
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("DESIGN", use_container_width=True,
+                         type="primary" if st.session_state.doe_active_tab == "design" else "secondary",
+                         key="doe_tab_design"):
+                st.session_state.doe_active_tab = "design"
+                st.rerun()
+        with c2:
+            if st.button("ANALYZE", use_container_width=True,
+                         type="primary" if st.session_state.doe_active_tab == "analyze" else "secondary",
+                         key="doe_tab_analyze"):
+                st.session_state.doe_active_tab = "analyze"
+                st.rerun()
+
+        # Session info
+        session = st.session_state.doe_session
         if session:
-            name = session.get("name", "") or "Untitled"
-            step = st.session_state.get("doe_step", "landing")
-            entry_type = session.get("entry_type", "—").replace("_", " ").title()
-            st.caption(f"Name: {name}")
-            st.caption(f"Type: {entry_type}")
-            st.caption(f"Step: {step.title()}")
+            st.caption(f"Name: {session.get('name', 'Untitled')}")
+            st.caption(f"Type: {session.get('entry_type', '—').replace('_', ' ').title()}")
             st.divider()
-            if st.button("New DOE", use_container_width=True, key="doe_sidebar_new"):
+            if st.button("New DOE", use_container_width=True):
                 _reset_doe()
         else:
             st.caption("No active session")
 
+        # Saved sessions
+        saved = doe_repo.list_sessions()
+        if saved:
+            st.divider()
+            st.caption("Saved sessions:")
+            for s in saved[:5]:
+                if st.button(f"{s['name'][:25]} ({s['status']})", key=f"doe_load_{s['id']}"):
+                    _load_session(doe_repo, s["id"])
+
     # --- Main content ---
     st.title("Design of Experiments")
 
-    # Initialize wizard state
-    if "doe_step" not in st.session_state:
-        st.session_state.doe_step = "landing"
-    if "doe_session" not in st.session_state:
-        st.session_state.doe_session = None
-
-    step = st.session_state.doe_step
-
-    if step == "landing":
-        _render_landing(doe_repo)
-    elif step == "define":
-        _render_define(doe_repo)
-    elif step == "design":
-        _render_design(doe_repo)
-    elif step == "capture":
-        _render_capture(doe_repo)
-    elif step == "analyze":
-        _render_analyze(doe_repo)
-    elif step == "optimize":
-        _render_optimize(doe_repo)
-
-
-def _go_to(step: str):
-    """Navigate to a wizard step."""
-    st.session_state.doe_step = step
-
-
-def _reset_doe():
-    """Reset the wizard to landing."""
-    st.session_state.doe_step = "landing"
-    st.session_state.doe_session = None
-    st.rerun()
+    if st.session_state.doe_active_tab == "design":
+        _render_design_tab(doe_repo)
+    else:
+        _render_analyze_tab(doe_repo)
 
 
 # ---------------------------------------------------------------------------
-# Landing page
+# Tab 1: DESIGN
+# ---------------------------------------------------------------------------
+
+def _render_design_tab(doe_repo: DoeRepository):
+    session = st.session_state.doe_session
+
+    # If no session, show landing
+    if session is None:
+        _render_landing(doe_repo)
+        return
+
+    factors = session.get("factors_json", [])
+    responses = session.get("responses_json", [])
+    design_exists = session.get("design_json") is not None
+
+    # -- Section 1: Setup --
+    with st.expander("SETUP: Factors & Responses", expanded=not design_exists):
+        _render_setup_section(session)
+
+    if not factors or not responses:
+        st.info("Define at least one factor and one response above to continue.")
+        return
+
+    # -- Section 2: Design Type --
+    with st.expander("DESIGN TYPE", expanded=not design_exists):
+        design_type = st.radio(
+            "Select design type",
+            options=["full_factorial", "fractional_factorial", "ccd", "box_behnken"],
+            format_func=lambda x: {
+                "full_factorial": "Full Factorial (2^k)",
+                "fractional_factorial": "Fractional Factorial (2^(k-p))",
+                "ccd": "Central Composite Design (CCD)",
+                "box_behnken": "Box-Behnken",
+            }[x],
+            horizontal=True,
+            key="doe_design_type",
+        )
+
+        col1, col2 = st.columns(2)
+        with col1:
+            n_center = st.slider("Center points", 0, 5, 3, key="doe_n_center")
+        with col2:
+            if design_type == "fractional_factorial":
+                resolution = st.selectbox("Resolution", [4, 5], index=0, key="doe_resolution")
+            elif design_type == "ccd":
+                alpha = st.selectbox("Alpha", ["rotatable", "face-centered", "orthogonal"],
+                                     index=0, key="doe_ccd_alpha")
+
+        # Run count estimate
+        k = len([f for f in factors if f["type"] == "continuous"])
+        if design_type == "full_factorial":
+            n_runs = 2 ** k + n_center
+        elif design_type == "fractional_factorial":
+            n_runs = get_fractional_run_count(k, resolution) + n_center
+        elif design_type == "ccd":
+            n_runs = 2 ** k + 2 * k + n_center
+        else:  # BB
+            n_runs = len(generate_box_behnken(factors, n_center=n_center))
+        st.info(f"Estimated runs: **{n_runs}** ({2**k} factorial + rest)")
+
+        if st.button("Generate Design", type="primary", key="doe_gen_design"):
+            if design_type == "full_factorial":
+                coded_df = generate_full_factorial(factors, n_center=n_center)
+            elif design_type == "fractional_factorial":
+                coded_df = generate_fractional_factorial(factors, resolution=resolution)
+            elif design_type == "ccd":
+                coded_df = generate_ccd(factors, alpha=alpha, n_center=n_center)
+            else:
+                coded_df = generate_box_behnken(factors, n_center=n_center)
+
+            session["design_json"] = coded_df.to_dict("records")
+            session["design_type"] = design_type
+            st.session_state.doe_design_generated = True
+
+            if session.get("db_id"):
+                doe_repo.update(session["db_id"], {
+                    "design": coded_df.to_dict("records"),
+                    "entry_type": design_type,
+                    "status": "designed",
+                })
+            st.rerun()
+
+    if not design_exists:
+        return
+
+    design_df = pd.DataFrame(session["design_json"])
+    decoded_df = decode_to_actual(design_df, factors)
+
+    # -- Section 3: Diagnostics --
+    with st.expander("DESIGN DIAGNOSTICS"):
+        if st.button("Evaluate Design", key="doe_evaluate"):
+            diag = evaluate_design(design_df, factors, model_order="linear")
+
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                power_1s = diag["power"].get(1.0, 0)
+                color = "normal" if power_1s >= 0.8 else "off"
+                st.metric("Power (1sigma effect)", f"{power_1s:.2f}",
+                          delta="Good" if power_1s >= 0.8 else "Low",
+                          delta_color=color)
+            with c2:
+                max_vif = max(diag["vif"].values()) if diag["vif"] else 1.0
+                st.metric("Max VIF", f"{max_vif:.2f}",
+                          delta="OK" if max_vif < 5 else "High",
+                          delta_color="normal" if max_vif < 5 else "off")
+            with c3:
+                st.metric("G-Efficiency", f"{diag['g_efficiency']:.2f}")
+
+            for w in diag.get("warnings", []):
+                st.warning(w)
+
+    # -- Section 4: Run Sheet --
+    with st.expander("RUN SHEET", expanded=True):
+        st.dataframe(decoded_df, use_container_width=True, hide_index=True)
+
+        # Download
+        response_names = [r["name"] for r in responses]
+        dl_df = decoded_df.copy()
+        for rname in response_names:
+            dl_df[rname] = ""
+        csv_data = dl_df.to_csv(index=False)
+        st.download_button("Download Run Sheet (CSV)", csv_data,
+                           file_name=f"doe_{session.get('name', 'design')}.csv",
+                           mime="text/csv", key="doe_dl_design")
+
+    st.divider()
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("New DOE", key="doe_design_new"):
+            _reset_doe()
+    with c2:
+        if st.button("Go to Analyze ->", type="primary", key="doe_to_analyze"):
+            st.session_state.doe_active_tab = "analyze"
+            st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Tab 2: ANALYZE
+# ---------------------------------------------------------------------------
+
+def _render_analyze_tab(doe_repo: DoeRepository):
+    session = st.session_state.doe_session
+
+    if session is None or session.get("design_json") is None:
+        st.info("Generate a design first (DESIGN tab) before analyzing.")
+        if st.button("Go to DESIGN tab"):
+            st.session_state.doe_active_tab = "design"
+            st.rerun()
+        return
+
+    design_df = pd.DataFrame(session["design_json"])
+    factors = session.get("factors_json", [])
+    responses = session.get("responses_json", [])
+    response_names = [r["name"] for r in responses]
+    db_id = session.get("db_id")
+
+    # -- Section 1: Data Entry --
+    results_exist = session.get("results_json") is not None
+
+    with st.expander("DATA ENTRY", expanded=not results_exist):
+        uploaded = st.file_uploader("Upload completed run sheet CSV", type=["csv"], key="doe_upload_results")
+        if uploaded:
+            try:
+                uploaded_df = pd.read_csv(uploaded)
+                results = []
+                for _, row in uploaded_df.iterrows():
+                    run_result = {"run": int(row["run"])}
+                    for rname in response_names:
+                        if rname in uploaded_df.columns:
+                            run_result[rname] = float(row[rname])
+                    results.append(run_result)
+                session["results_json"] = results
+                if db_id:
+                    doe_repo.update(db_id, {"results": results, "status": "running"})
+                st.success(f"Loaded {len(results)} runs with {len(response_names)} responses")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error reading CSV: {e}")
+
+        # Manual entry fallback
+        if not results_exist and not uploaded:
+            st.caption("Or enter data below after generating the design.")
+
+    if not results_exist:
+        return
+
+    results_df = pd.DataFrame(session["results_json"])
+
+    # -- Section 2: Analysis --
+    if "doe_analysis_results" not in st.session_state:
+        st.session_state.doe_analysis_results = None
+
+    if st.button("Run Analysis", type="primary", key="doe_run_analysis"):
+        analysis_results = {}
+        for r in responses:
+            rname = r["name"]
+            # Try RSM first if center points exist, else linear
+            is_center = _is_center_row(design_df, [f["name"] for f in factors])
+            if is_center.sum() >= 3:
+                model = fit_rsm(factors, design_df, results_df, rname)
+            else:
+                model = fit_linear(factors, design_df, results_df, rname)
+            analysis_results[rname] = model
+        st.session_state.doe_analysis_results = analysis_results
+        if db_id:
+            doe_repo.update(db_id, {"analysis": analysis_results, "status": "analyzed"})
+        st.rerun()
+
+    analysis = st.session_state.doe_analysis_results
+    if analysis is None:
+        return
+
+    # -- Section 3: ANOVA --
+    with st.expander("ANOVA TABLE", expanded=True):
+        for rname in response_names:
+            if rname not in analysis:
+                continue
+            model = analysis[rname]
+            st.markdown(f"**Response: {rname}**")
+            anova_df = anova_table(model)
+            st.dataframe(anova_df, use_container_width=True, hide_index=True)
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("R", f"{model.get('r_squared', 0):.4f}")
+            c2.metric("Adj R", f"{model.get('r_squared_adj', 0):.4f}")
+            c3.metric("RMSE", f"{model.get('rmse', 0):.4f}")
+            lof_p = model.get("lack_of_fit_p")
+            c4.metric("Lack-of-fit p", f"{lof_p:.4f}" if lof_p is not None else "N/A")
+            st.divider()
+
+    # -- Section 4: Residuals --
+    with st.expander("RESIDUAL DIAGNOSTICS"):
+        for rname in response_names:
+            if rname not in analysis:
+                continue
+            model = analysis[rname]
+            resid_data = model.get("residuals", {})
+            if not resid_data:
+                st.caption(f"No residual data for {rname}")
+                continue
+
+            st.markdown(f"**{rname}**")
+            resid_dict = {
+                "residuals": np.array(resid_data.get("residual", [])),
+                "studentized": np.array([v or np.nan for v in resid_data.get("studentized", [])]),
+                "predicted": np.array(resid_data.get("predicted", [])),
+                "run_order": np.array(resid_data.get("run", [])),
+                "leverage": np.array([v or 0 for v in resid_data.get("leverage", [])]),
+                "cooks_d": np.array([v or 0 for v in [] if v]),
+                "shapiro_p": None,
+            }
+
+            # Recompute for proper structures
+            obs = np.array(resid_data.get("observed", []))
+            pred = np.array(resid_data.get("predicted", []))
+            X = np.column_stack([np.ones(len(obs)), np.arange(len(obs))])  # placeholder
+            from doe.residuals import compute_residuals as cr
+            resid_dict = cr(obs, pred, X, np.array(resid_data.get("run", [])))
+
+            fig = build_residual_plots(resid_dict)
+            st.plotly_chart(fig, use_container_width=True)
+            st.divider()
+
+    # -- Section 5: Effects & Plots --
+    with st.expander("EFFECTS & PLOTS"):
+        factor_names = [f["name"] for f in factors]
+        merged = design_df.merge(results_df, on="run") if not results_df.empty else design_df.copy()
+
+        for rname in response_names:
+            if rname not in analysis or rname not in merged.columns:
+                continue
+            model = analysis[rname]
+            st.markdown(f"**{rname}**")
+
+            # Pareto
+            coefs = [c for c in model["coefficients"] if c["term"] != "Intercept"]
+            coefs.sort(key=lambda c: abs(c["estimate"]), reverse=True)
+            pareto_fig = go.Figure(go.Bar(
+                x=[abs(c["estimate"]) for c in coefs],
+                y=[c["term"] for c in coefs],
+                orientation="h",
+                marker_color=["#C4523E" if c["significant"] else "#4A90D9" for c in coefs],
+            ))
+            pareto_fig.update_layout(title=f"Pareto of Effects - {rname}", height=300)
+            st.plotly_chart(pareto_fig, use_container_width=True)
+
+            # Main effects
+            if factor_names:
+                fig_me = make_subplots(rows=1, cols=len(factor_names),
+                                       subplot_titles=factor_names)
+                for i, fn in enumerate(factor_names):
+                    levels = sorted(merged[fn].unique())
+                    means = [merged.loc[merged[fn] == l, rname].mean() for l in levels]
+                    fig_me.add_trace(go.Scatter(x=[str(l) for l in levels], y=means,
+                                                mode="lines+markers"), row=1, col=i+1)
+                fig_me.update_layout(height=300, showlegend=False)
+                st.plotly_chart(fig_me, use_container_width=True)
+
+    # -- Section 6: Prediction Profiler --
+    with st.expander("PREDICTION PROFILER", expanded=True):
+        if "doe_profiler_positions" not in st.session_state:
+            st.session_state.doe_profiler_positions = {
+                f["name"]: 0.0 for f in factors if f["type"] == "continuous"
+            }
+
+        positions = st.session_state.doe_profiler_positions
+
+        # Factor sliders
+        cont_factors = [f for f in factors if f["type"] == "continuous"]
+        if cont_factors:
+            slider_cols = st.columns(min(len(cont_factors), 6))
+            for i, f in enumerate(cont_factors):
+                col_idx = i % len(slider_cols)
+                with slider_cols[col_idx]:
+                    positions[f["name"]] = st.slider(
+                        f["name"], -1.0, 1.0, positions.get(f["name"], 0.0),
+                        0.01, key=f"prof_slider_{f['name']}"
+                    )
+        else:
+            st.info("No continuous factors for profiling.")
+            return
+
+        # Compute profile
+        profile = compute_profile(factors, analysis, responses, positions)
+
+        # Response trace columns
+        resp_cols = st.columns(min(len(responses), 4))
+        for i, r in enumerate(responses):
+            rname = r["name"]
+            if rname not in profile:
+                continue
+            col_idx = i % len(resp_cols)
+            with resp_cols[col_idx]:
+                p = profile[rname]
+                st.metric(rname, f"{p['predicted']:.3f}")
+                d = p["desirability"]
+                d_color = "#00BFA5" if d >= 0.7 else "#F39C12" if d >= 0.3 else "#C4523E"
+                st.markdown(
+                    f"<span style='color:{d_color};font-weight:700'>D = {d:.3f}</span>",
+                    unsafe_allow_html=True,
+                )
+                st.progress(d)
+
+                # Mini trace plot for first continuous factor
+                for fn in cont_factors[:1]:
+                    if fn in p["traces"]:
+                        trace = p["traces"][fn]
+                        tf = go.Figure(go.Scatter(x=trace["x"], y=trace["y"], mode="lines",
+                                                   line=dict(width=2, color="#C4734F")))
+                        tf.update_layout(height=100, margin=dict(l=0, r=0, t=0, b=0))
+                        st.plotly_chart(tf, use_container_width=True, config={"displayModeBar": False})
+
+        # Overall desirability
+        ind_d = [profile[r["name"]]["desirability"] for r in responses if r["name"] in profile]
+        overall_d = compute_overall_desirability(ind_d) if ind_d else 0.0
+
+        col_od, col_opt = st.columns([2, 1])
+        with col_od:
+            st.metric("Overall Desirability", f"D = {overall_d:.3f}")
+            if overall_d >= 0.8:
+                st.success("Excellent")
+            elif overall_d >= 0.5:
+                st.warning("Acceptable")
+            else:
+                st.error("Poor - adjust goals")
+
+        with col_opt:
+            if st.button("Find Optimum", type="primary", key="doe_find_opt"):
+                result = doe_optimize(factors, responses, analysis, n_starts=10)
+                # Update slider positions
+                for f in factors:
+                    if f["type"] != "continuous":
+                        continue
+                    opt_val = result["optimal_settings"].get(f["name"])
+                    if opt_val is not None:
+                        coded = (2 * (opt_val - f["low"]) / (f["high"] - f["low"])) - 1
+                        positions[f["name"]] = float(max(-1.0, min(1.0, coded)))
+                st.session_state.doe_profiler_positions = positions
+                st.rerun()
+
+    st.divider()
+    if st.button("New DOE", key="doe_analyze_new"):
+        _reset_doe()
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers
 # ---------------------------------------------------------------------------
 
 def _render_landing(doe_repo: DoeRepository):
-    """Landing page: choose entry type or resume existing."""
-    st.subheader("Start a DOE")
+    """New DOE landing."""
+    st.subheader("Start a New DOE")
 
-    # Resume existing
-    saved = doe_repo.list_sessions()
-    if saved:
-        st.markdown("#### Continue existing DOE")
-        cols = st.columns([3, 1])
-        with cols[0]:
-            selected_name = st.selectbox(
-                "Saved sessions",
-                options=[f"{s['id']}: {s['name']} ({s['entry_type']}, {s['status']})"
-                         for s in saved],
-                key="doe_resume_select",
-            )
-        with cols[1]:
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("Resume", key="doe_resume_btn"):
-                sid = int(selected_name.split(":")[0])
-                session = doe_repo.load(sid)
-                # Reconstruct session state from DB
-                st.session_state.doe_session = {
-                    "name": session["name"],
-                    "entry_type": session["entry_type"],
-                    "status": session["status"],
-                    "factors_json": session["factors"] if session["factors"] else [],
-                    "responses_json": session["responses"] if session["responses"] else [],
-                    "design_json": session.get("design"),
-                    "results_json": session.get("results"),
-                    "model_json": session.get("model"),
-                    "optimum_json": session.get("optimum"),
-                    "db_id": sid,
-                }
-                # Navigate to the appropriate step
-                status_to_step = {
-                    "defined": "define",
-                    "designed": "design",
-                    "running": "capture",
-                    "analyzed": "analyze",
-                    "optimized": "optimize",
-                }
-                _go_to(status_to_step.get(session["status"], "define"))
-                st.rerun()
-
-        st.divider()
-
-    st.markdown("#### Start new DOE")
     entry_type = st.radio(
-        "Entry type",
-        options=["screening", "full_factorial", "analyze_only"],
+        "Design type",
+        options=["full_factorial", "fractional_factorial", "ccd", "box_behnken"],
         format_func=lambda x: {
-            "screening": "Screening — find critical factors from many",
-            "full_factorial": "Full factorial — characterize known critical factors",
-            "analyze_only": "Analyze only — import existing results",
+            "full_factorial": "Full Factorial - characterize known critical factors (2^k)",
+            "fractional_factorial": "Fractional Factorial - screen many factors with few runs",
+            "ccd": "Central Composite - RSM with 5 levels per factor",
+            "box_behnken": "Box-Behnken - RSM with 3 levels, fewer runs than CCD",
         }[x],
-        key="doe_entry_type",
+        key="doe_new_entry_type",
     )
+    name = st.text_input("DOE Name", placeholder="e.g., Formulation Optimization #3", key="doe_new_name")
 
-    if st.button("Start  ->", type="primary", key="doe_start_btn"):
-        st.session_state.doe_session = {
-            "name": "",
+    if st.button("Start", type="primary", key="doe_new_start"):
+        session = {
+            "name": name or "Untitled DOE",
             "entry_type": entry_type,
             "status": "defined",
             "factors_json": [],
             "responses_json": [],
             "design_json": None,
             "results_json": None,
-            "model_json": None,
+            "analysis_json": None,
             "optimum_json": None,
+            "design_type": None,
         }
-        _go_to("define")
-        st.rerun()
-
-
-# ---------------------------------------------------------------------------
-# Step 1: Define factors and responses
-# ---------------------------------------------------------------------------
-
-
-def _seed_define_list(list_key: str, session: dict, session_key: str,
-                      default_row: dict) -> None:
-    """Seed a session-state list on first render."""
-    if list_key not in st.session_state:
-        existing = session.get(session_key, [])
-        st.session_state[list_key] = existing if existing else [dict(default_row)]
-
-
-def _add_row(list_key: str) -> None:
-    """Callback: append a copy of the last row as template."""
-    st.session_state[list_key].append(dict(st.session_state[list_key][-1]))
-
-
-def _remove_row(list_key: str, idx: int) -> None:
-    """Callback: remove row at index (keep at least 1)."""
-    if len(st.session_state[list_key]) > 1:
-        st.session_state[list_key].pop(idx)
-
-
-def _render_define(doe_repo: DoeRepository):
-    """Step 1: Define factors and responses.
-
-    Each factor / response is a row of individual Streamlit widgets (not
-    ``st.data_editor``).  Every input has a unique key, so values are
-    tracked independently and never dropped on navigation.
-    """
-    session = st.session_state.doe_session
-    entry_type = session["entry_type"]
-
-    st.subheader("Step 1: Define Factors & Responses")
-    st.caption(f"Entry type: {entry_type.replace('_', ' ').title()}")
-
-    # DOE name
-    session["name"] = st.text_input("DOE Name", value=session.get("name", ""),
-                                     key="doe_name_input")
-
-    # ---- Factors ----
-    st.markdown("##### Factors")
-    _seed_define_list("doe_factors_list", session, "factors_json",
-                      {"name": "", "type": "continuous", "low": 0.0, "high": 100.0})
-
-    # Header row
-    h_name, h_type, h_low, h_high, h_del = st.columns([3, 2, 2, 2, 1])
-    h_name.caption("Name")
-    h_type.caption("Type")
-    h_low.caption("Low")
-    h_high.caption("High")
-    h_del.caption("")
-
-    # Factor rows
-    for i in range(len(st.session_state.doe_factors_list)):
-        row = st.session_state.doe_factors_list[i]
-        c_name, c_type, c_low, c_high, c_del = st.columns([3, 2, 2, 2, 1])
-        with c_name:
-            row["name"] = st.text_input(
-                "Factor Name", value=str(row.get("name", "")),
-                key=f"fac_name_{i}", label_visibility="collapsed",
-                placeholder=f"Factor {i+1}",
-            )
-        with c_type:
-            row["type"] = st.selectbox(
-                "Type", options=["continuous", "categorical"],
-                index=0 if row.get("type") == "continuous" else 1,
-                key=f"fac_type_{i}", label_visibility="collapsed",
-            )
-        with c_low:
-            row["low"] = st.number_input(
-                "Low", value=float(row.get("low", 0.0)),
-                key=f"fac_low_{i}", label_visibility="collapsed",
-                step=0.01, format="%.4f",
-            )
-        with c_high:
-            row["high"] = st.number_input(
-                "High", value=float(row.get("high", 100.0)),
-                key=f"fac_high_{i}", label_visibility="collapsed",
-                step=0.01, format="%.4f",
-            )
-        with c_del:
-            if len(st.session_state.doe_factors_list) > 1:
-                st.button("✕", key=f"fac_del_{i}",
-                          on_click=_remove_row, args=("doe_factors_list", i))
-
-    st.button("+ Add Factor", key="doe_add_factor",
-              on_click=_add_row, args=("doe_factors_list",))
-
-    session["factors_json"] = list(st.session_state.doe_factors_list)
-
-    # ---- Responses ----
-    st.markdown("##### Responses")
-    _seed_define_list("doe_responses_list", session, "responses_json",
-                      {"name": "", "goal": "maximize", "target": None, "low": 0.0, "high": 100.0})
-
-    # Header row
-    rn, rg, rt, rl, rh, rd = st.columns([2.5, 1.3, 1.3, 1.3, 1.3, 1])
-    rn.caption("Name")
-    rg.caption("Goal")
-    rt.caption("Target")
-    rl.caption("Low / Min")
-    rh.caption("High / Max")
-    rd.caption("")
-
-    # Response rows
-    for i in range(len(st.session_state.doe_responses_list)):
-        row = st.session_state.doe_responses_list[i]
-        rn_c, rg_c, rt_c, rl_c, rh_c, rd_c = st.columns([2.5, 1.3, 1.3, 1.3, 1.3, 1])
-        with rn_c:
-            row["name"] = st.text_input(
-                "Response Name", value=str(row.get("name", "")),
-                key=f"resp_name_{i}", label_visibility="collapsed",
-                placeholder=f"Response {i+1}",
-            )
-        with rg_c:
-            goals = ["maximize", "minimize", "target"]
-            cur_goal = row.get("goal", "maximize")
-            row["goal"] = st.selectbox(
-                "Goal", options=goals,
-                index=goals.index(cur_goal) if cur_goal in goals else 0,
-                key=f"resp_goal_{i}", label_visibility="collapsed",
-            )
-        with rt_c:
-            if row.get("goal") == "target":
-                row["target"] = st.number_input(
-                    "Target", value=float(row.get("target") or 0.0),
-                    key=f"resp_target_{i}", label_visibility="collapsed",
-                    step=0.01, format="%.4f",
-                )
-            else:
-                row["target"] = None
-                st.caption("—")
-        with rl_c:
-            if row.get("goal") in ("maximize", "target"):
-                row["low"] = st.number_input(
-                    "Low", value=float(row.get("low", 0.0)),
-                    key=f"resp_low_{i}", label_visibility="collapsed",
-                    step=0.01, format="%.4f",
-                )
-            else:
-                row["low"] = 0.0
-                st.caption("—")
-        with rh_c:
-            if row.get("goal") in ("minimize", "target"):
-                row["high"] = st.number_input(
-                    "High", value=float(row.get("high", 100.0)),
-                    key=f"resp_high_{i}", label_visibility="collapsed",
-                    step=0.01, format="%.4f",
-                )
-            else:
-                row["high"] = 1e12
-                st.caption("—")
-        with rd_c:
-            if len(st.session_state.doe_responses_list) > 1:
-                st.button("✕", key=f"resp_del_{i}",
-                          on_click=_remove_row, args=("doe_responses_list", i))
-
-    st.button("+ Add Response", key="doe_add_response",
-              on_click=_add_row, args=("doe_responses_list",))
-
-    session["responses_json"] = list(st.session_state.doe_responses_list)
-
-    st.divider()
-
-    # Navigation
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        if st.button("<- Back", key="doe_define_back"):
-            _reset_doe()
-    with col2:
-        if st.button("Next: Design  ->", type="primary", key="doe_define_next"):
-            # Validate
-            valid_factors = [f for f in session["factors_json"]
-                             if f.get("name") and str(f.get("name")).strip()]
-            valid_responses = [r for r in session["responses_json"]
-                               if r.get("name") and str(r.get("name")).strip()]
-
-            if not valid_factors:
-                st.error("Add at least one factor with a name.")
-                return
-            if not valid_responses:
-                st.error("Add at least one response with a name.")
-                return
-
-            session["factors_json"] = valid_factors
-            session["responses_json"] = valid_responses
-
-            # Save to DB
-            sid = doe_repo.create(
-                name=session["name"] or "Untitled DOE",
-                entry_type=session["entry_type"],
-                factors=valid_factors,
-                responses=valid_responses,
-            )
-            st.session_state.doe_session_id = sid
-            st.session_state.doe_session["db_id"] = sid
-
-            if session["entry_type"] == "analyze_only":
-                _go_to("capture")
-            else:
-                _go_to("design")
-            st.rerun()
-
-
-# ---------------------------------------------------------------------------
-# Step 2: Generate Design
-# ---------------------------------------------------------------------------
-
-def _render_design(doe_repo: DoeRepository):
-    """Step 2: Generate and display the design matrix."""
-    session = st.session_state.doe_session
-    entry_type = session["entry_type"]
-    factors = session.get("factors_json", [])
-    responses = session.get("responses_json", [])
-    db_id = session.get("db_id")
-
-    st.subheader("Step 2: Generate Design")
-
-    # Design parameters
-    col1, col2 = st.columns(2)
-    with col1:
-        n_factors = len(factors)
-        if entry_type == "screening":
-            resolution = st.selectbox(
-                "Resolution",
-                options=[4, 5],
-                index=0,
-                help="Resolution IV: main effects clear of 2-factor interactions. "
-                     "Resolution V: main effects + 2-way interactions clear of each other.",
-                key="doe_resolution",
-            )
-            n_runs = get_fractional_run_count(n_factors, resolution)
-            st.info(f"Estimated runs: {n_runs} (fractional factorial)")
-        else:
-            n_center = st.slider("Center points", min_value=0, max_value=5,
-                                value=3, key="doe_n_center")
-            n_runs = 2 ** n_factors + n_center
-            st.info(f"Total runs: {2 ** n_factors} factorial + {n_center} center = {n_runs}")
-
-    st.divider()
-
-    if st.button("Generate Run Sheet", type="primary", key="doe_gen_design"):
-        if entry_type == "screening":
-            coded_df = generate_fractional_factorial(factors, resolution=resolution)
-        else:
-            coded_df = generate_full_factorial(factors, n_center=n_center)
-
-        # Decode for display
-        decoded_df = decode_to_actual(coded_df, factors)
-
-        session["design_json"] = coded_df.to_dict("records")
-        session["design_df"] = decoded_df  # keep DataFrame for display
-
-        # Save design to DB
-        if db_id:
-            doe_repo.update(db_id, {
-                "design": coded_df.to_dict("records"),
-                "status": "designed",
-            })
-
-        st.rerun()
-
-    # Show design if generated
-    if session.get("design_json"):
-        decoded_df = session.get("design_df")
-        if decoded_df is not None:
-            st.markdown("##### Run Sheet (coded -> actual)")
-            st.dataframe(decoded_df, use_container_width=True, hide_index=True)
-
-            # Add blank response columns for download
-            response_names = [r["name"] for r in responses]
-            if response_names:
-                download_df = decoded_df.copy()
-                for rname in response_names:
-                    download_df[rname] = ""
-                st.download_button(
-                    "Export Run Sheet (CSV)",
-                    data=download_df.to_csv(index=False),
-                    file_name=f"doe_run_sheet_{session.get('name', 'doe')}.csv",
-                    mime="text/csv",
-                    key="doe_download_runsheet",
-                )
-
-    st.divider()
-
-    # Navigation
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        if st.button("<- Back to Define", key="doe_design_back"):
-            _go_to("define")
-            st.rerun()
-    with col2:
-        if session.get("design_json"):
-            if st.button("Next: Capture  ->", type="primary", key="doe_design_next"):
-                _go_to("capture")
-                st.rerun()
-
-
-# ---------------------------------------------------------------------------
-# Step 3: Capture Results
-# ---------------------------------------------------------------------------
-
-def _render_capture(doe_repo: DoeRepository):
-    """Step 3: Capture response values (manual entry or CSV upload).
-
-    Each run gets a row of individual ``st.number_input`` widgets — same
-    reliable pattern as the define step.  No ``st.data_editor``.
-    """
-    session = st.session_state.doe_session
-    design_json = session.get("design_json")
-    factors = session.get("factors_json", [])
-    responses = session.get("responses_json", [])
-    db_id = session.get("db_id")
-
-    st.subheader("Step 3: Capture Results")
-
-    response_names = [r["name"] for r in responses]
-    n_runs = len(design_json) if design_json else 0
-
-    if not response_names:
-        st.error("No responses defined. Go back to Define step.")
-        if st.button("<- Back to Define", key="doe_capture_back_no_resp"):
-            _go_to("define")
-            st.rerun()
-        return
-
-    # Upload CSV option
-    st.markdown("##### Upload completed run sheet")
-    uploaded = st.file_uploader(
-        "Upload CSV with response columns filled in",
-        type=["csv"],
-        key="doe_upload_csv",
-    )
-
-    if uploaded is not None:
-        try:
-            uploaded_df = pd.read_csv(uploaded)
-            st.success(f"Loaded {len(uploaded_df)} rows from CSV")
-
-            # Verify response columns exist
-            missing = [r for r in response_names if r not in uploaded_df.columns]
-            if missing:
-                st.warning(f"Missing response columns: {missing}")
-
-            # Extract results
-            results = []
-            for _, row in uploaded_df.iterrows():
-                run_result = {"run": int(row["run"])}
-                for rname in response_names:
-                    if rname in uploaded_df.columns:
-                        run_result[rname] = float(row[rname])
-                results.append(run_result)
-
-            session["results_json"] = results
-            st.dataframe(uploaded_df, use_container_width=True)
-        except Exception as e:
-            st.error(f"Error reading CSV: {e}")
-            return
-
-    st.divider()
-
-    # Manual entry
-    st.markdown("##### Or enter results manually")
-
-    if not session.get("results_json") and design_json:
-        empty_results = []
-        for d in design_json:
-            row = {"run": d["run"]}
-            for rname in response_names:
-                row[rname] = 0.0
-            empty_results.append(row)
-        session["results_json"] = empty_results
-
-    if session.get("results_json"):
-        results = session["results_json"]
-
-        # Header
-        header_cols = st.columns([1] + [2] * len(response_names))
-        header_cols[0].caption("Run")
-        for j, rname in enumerate(response_names):
-            header_cols[j + 1].caption(rname)
-
-        # One row per run
-        for i, row in enumerate(results):
-            cols = st.columns([1] + [2] * len(response_names))
-            with cols[0]:
-                st.markdown(
-                    f"<p style='padding-top:0.5rem;text-align:center;"
-                    f"font-weight:600;color:#5C3D2A;'>{row['run']}</p>",
-                    unsafe_allow_html=True,
-                )
-            for j, rname in enumerate(response_names):
-                with cols[j + 1]:
-                    row[rname] = st.number_input(
-                        rname,
-                        value=float(row.get(rname, 0.0) or 0.0),
-                        key=f"capture_{i}_{rname}",
-                        label_visibility="collapsed",
-                        step=0.01, format="%.4f",
-                    )
-
-        session["results_json"] = results
-
-    st.divider()
-
-    # Validate and proceed
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        if st.button("<- Back to Design", key="doe_capture_back"):
-            if session["entry_type"] == "analyze_only":
-                _go_to("define")
-            else:
-                _go_to("design")
-            st.rerun()
-    with col2:
-        if st.button("Next: Analyze  ->", type="primary", key="doe_capture_next"):
-            # Validate all responses filled in
-            results = session.get("results_json", [])
-            valid = True
-            for r in results:
-                for rname in response_names:
-                    val = r.get(rname)
-                    if val is None or (isinstance(val, float) and pd.isna(val)):
-                        st.error(f"Run {r['run']}: {rname} is missing.")
-                        valid = False
-            if not valid:
-                return
-
-            # Save to DB
-            if db_id:
-                doe_repo.update(db_id, {
-                    "results": results,
-                    "status": "running",
-                })
-            _go_to("analyze")
-            st.rerun()
-
-
-# ---------------------------------------------------------------------------
-# Step 4: Analyze
-# ---------------------------------------------------------------------------
-
-def _render_analyze(doe_repo: DoeRepository):
-    """Step 4: Analyze results with regression and visualization."""
-    session = st.session_state.doe_session
-    design_json = session.get("design_json")
-    results_json = session.get("results_json")
-    factors = session.get("factors_json", [])
-    responses = session.get("responses_json", [])
-    db_id = session.get("db_id")
-
-    st.subheader("Step 4: Analysis")
-
-    design_df = pd.DataFrame(design_json) if design_json else None
-    results_df = pd.DataFrame(results_json) if results_json else None
-    response_names = [r["name"] for r in responses]
-
-    if design_df is None or results_df is None:
-        st.error("Design or results missing. Go back and complete those steps.")
-        return
-
-    # Merge design + results
-    merged = design_df.merge(results_df, on="run")
-    factor_names = [f["name"] for f in factors]
-
-    all_models = {}
-
-    for rname in response_names:
-        st.markdown(f"### Response: {rname}")
-
-        # Fit linear model
-        linear_model = fit_linear(factors, design_df, results_df, rname)
-
-        # Coefficient table
-        st.markdown("##### Coefficients (Linear Model)")
-        coef_df = pd.DataFrame(linear_model["coefficients"])
-        coef_df["p_value"] = coef_df["p_value"].map(
-            lambda x: f"{x:.4f}" if x is not None else "N/A"
-        )
-        coef_df["estimate"] = coef_df["estimate"].map(lambda x: f"{x:.3f}")
-        coef_df.rename(columns={
-            "term": "Term", "estimate": "Estimate",
-            "std_err": "Std Err", "p_value": "P-value",
-            "significant": "Significant",
-        }, inplace=True)
-        st.dataframe(coef_df, use_container_width=True, hide_index=True)
-
-        # Model summary metrics
-        c1, c2, c3 = st.columns(3)
-        r2_str = f"{linear_model['r_squared']:.4f}" if linear_model.get('r_squared') is not None else "N/A"
-        adj_r2_str = f"{linear_model['r_squared_adj']:.4f}" if linear_model.get('r_squared_adj') is not None else "N/A"
-        pval_str = f"{linear_model['model_p_value']:.4f}" if linear_model.get('model_p_value') is not None else "N/A"
-        c1.metric("R-squared", r2_str)
-        c2.metric("Adj R-squared", adj_r2_str)
-        c3.metric("Model p-value", pval_str)
-
-        # Check for center points -> RSM
-        is_center = _is_center_row(merged, factor_names)
-
-        has_center = is_center.sum() >= 3
-
-        rsm_model = None
-        if has_center:
-            factorial_y = merged.loc[~is_center, rname].values
-            center_y = merged.loc[is_center, rname].values
-
-            if has_curvature(factorial_y, center_y):
-                st.info("Curvature detected! Fitting RSM (quadratic) model.")
-                rsm_model = fit_rsm(factors, design_df, results_df, rname)
-
-                st.markdown("##### RSM Coefficients")
-                rsm_coef_df = pd.DataFrame(rsm_model["coefficients"])
-                rsm_coef_df["p_value"] = rsm_coef_df["p_value"].map(
-                    lambda x: f"{x:.4f}" if x is not None else "N/A"
-                )
-                rsm_coef_df["estimate"] = rsm_coef_df["estimate"].map(lambda x: f"{x:.3f}")
-                rsm_coef_df.rename(columns={
-                    "term": "Term", "estimate": "Estimate",
-                    "std_err": "Std Err", "p_value": "P-value",
-                    "significant": "Significant",
-                }, inplace=True)
-                st.dataframe(rsm_coef_df, use_container_width=True, hide_index=True)
-
-        # --- Visualizations ---
-        active_model = rsm_model if rsm_model else linear_model
-        all_models[rname] = active_model
-
-        # Main effects plot
-        if len(factor_names) > 0:
-            fig_main = _build_main_effects_plot(merged, factor_names, rname, active_model)
-            st.plotly_chart(fig_main, use_container_width=True)
-
-        # Pareto of effects
-        fig_pareto = _build_pareto_plot(active_model)
-        st.plotly_chart(fig_pareto, use_container_width=True)
-
-        # Contour/surface plots (RSM only, 2+ significant continuous factors)
-        if rsm_model and len(factor_names) >= 2:
-            sig_continuous = [
-                f for f in factors
-                if f["type"] == "continuous"
-                and any(c["term"] == f["name"] and c["significant"]
-                        for c in rsm_model["coefficients"])
-            ]
-            if len(sig_continuous) >= 2:
-                fig_contour = _build_contour_plot(
-                    factors, rsm_model, rname, sig_continuous[0]["name"],
-                    sig_continuous[1]["name"],
-                )
-                st.plotly_chart(fig_contour, use_container_width=True)
-
-                fig_surface = _build_surface_plot(
-                    factors, rsm_model, rname, sig_continuous[0]["name"],
-                    sig_continuous[1]["name"],
-                )
-                st.plotly_chart(fig_surface, use_container_width=True)
-
-        st.divider()
-
-    # Save model to DB
-    if db_id and st.button("Save Analysis", key="doe_save_analysis"):
-        doe_repo.update(db_id, {
-            "model": all_models,
-            "status": "analyzed",
-        })
-        st.success("Analysis saved.")
-
-    # Navigation
-    st.divider()
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col1:
-        if st.button("<- Back to Capture", key="doe_analyze_back"):
-            _go_to("capture")
-            st.rerun()
-    with col2:
-        if st.button("Next: Optimize  ->", type="primary", key="doe_analyze_next"):
-            session["model_json"] = all_models
-            if db_id:
-                doe_repo.update(db_id, {
-                    "model": all_models,
-                    "status": "analyzed",
-                })
-            _go_to("optimize")
-            st.rerun()
-    with col3:
-        # Screening path: promote to full factorial
-        if session["entry_type"] == "screening":
-            if st.button("Promote to Full Factorial", key="doe_promote"):
-                _promote_to_full_factorial(session, doe_repo, factors, responses, all_models)
-
-
-# ---------------------------------------------------------------------------
-# Step 5: Optimize
-# ---------------------------------------------------------------------------
-
-def _render_optimize(doe_repo: DoeRepository):
-    """Step 5: Multi-response optimization via desirability."""
-    session = st.session_state.doe_session
-    factors = session.get("factors_json", [])
-    responses = session.get("responses_json", [])
-    models = session.get("model_json")
-    db_id = session.get("db_id")
-
-    st.subheader("Step 5: Optimization")
-
-    if not models:
-        st.error("No models fitted. Go back to Analyze step.")
-        if st.button("<- Back to Analyze", key="doe_opt_back_no_model"):
-            _go_to("analyze")
-            st.rerun()
-        return
-
-    # Show editable response goals
-    st.markdown("##### Response Goals")
-    for r in responses:
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            st.markdown(f"**{r['name']}**")
-        with c2:
-            goal = st.selectbox(
-                "Goal", options=["maximize", "minimize", "target"],
-                index=["maximize", "minimize", "target"].index(r["goal"]),
-                key=f"doe_goal_{r['name']}",
-            )
-            r["goal"] = goal
-        with c3:
-            if r["goal"] in ("maximize", "target"):
-                low = st.number_input(
-                    "Low", value=float(r.get("low", 0.0)),
-                    step=0.01, format="%.4f", key=f"doe_low_{r['name']}",
-                )
-                r["low"] = low
-            else:
-                r["low"] = 0.0
-                st.caption("—")
-        with c4:
-            if r["goal"] in ("minimize", "target"):
-                high = st.number_input(
-                    "High", value=float(r.get("high", 100.0)),
-                    step=0.01, format="%.4f", key=f"doe_high_{r['name']}",
-                )
-                r["high"] = high
-            else:
-                r["high"] = 1e12
-                st.caption("—")
-        if r["goal"] == "target":
-            r["target"] = st.number_input(
-                "Target", value=float(r.get("target") or r["low"]),
-                step=0.01, format="%.4f",
-                key=f"doe_target_{r['name']}",
-            )
-
-    st.divider()
-
-    if st.button("Find Optimum", type="primary", key="doe_find_optimum"):
-        result = doe_optimize(factors, responses, models, n_starts=10)
-        session["optimum_json"] = result
+        st.session_state.doe_session = session
 
         # Save to DB
-        if db_id:
-            doe_repo.update(db_id, {
-                "optimum": result,
-                "status": "optimized",
-            })
+        sid = doe_repo.create(
+            name=session["name"],
+            entry_type=entry_type,
+            factors=[],
+            responses=[],
+        )
+        session["db_id"] = sid
+        st.session_state.doe_session_id = sid
         st.rerun()
 
-    # Display results
-    if session.get("optimum_json"):
-        result = session["optimum_json"]
-        st.markdown("### Optimal Settings")
 
-        # Optimal factor settings
-        cols = st.columns(len(factors))
-        for i, f in enumerate(factors):
-            val = result["optimal_settings"].get(f["name"], "—")
-            unit_info = f" ({f['low']}-{f['high']})" if f["type"] == "continuous" else ""
-            with cols[i]:
-                st.metric(f["name"], f"{val}{unit_info}")
+def _render_setup_section(session: dict):
+    """Factor and response definition (inline editors)."""
+    # Factors
+    st.markdown("**Factors**")
+    if "doe_factors_list" not in st.session_state:
+        st.session_state.doe_factors_list = session.get("factors_json", []) or [
+            {"name": "", "type": "continuous", "low": 0.0, "high": 100.0}
+        ]
 
-        # Predicted responses
-        st.markdown("#### Predicted Responses")
-        resp_cols = st.columns(len(responses))
-        for i, r in enumerate(responses):
-            pred = result["predicted_responses"].get(r["name"], "—")
-            pi = result["prediction_intervals"].get(r["name"], ["—", "—"])
-            with resp_cols[i]:
-                st.metric(r["name"], f"{pred}")
-                st.caption(f"Prediction range: [{pi[0]} – {pi[1]}]")
+    for i, row in enumerate(st.session_state.doe_factors_list):
+        c1, c2, c3, c4, c5 = st.columns([3, 2, 2, 2, 1])
+        with c1:
+            row["name"] = st.text_input("Name", row.get("name", ""), key=f"fac_n_{i}",
+                                        label_visibility="collapsed", placeholder=f"Factor {i+1}")
+        with c2:
+            row["type"] = st.selectbox("Type", ["continuous", "categorical"],
+                                       index=0 if row.get("type") == "continuous" else 1,
+                                       key=f"fac_t_{i}", label_visibility="collapsed")
+        with c3:
+            row["low"] = st.number_input("Low", float(row.get("low", 0)), key=f"fac_l_{i}",
+                                         label_visibility="collapsed", step=0.01, format="%.4f")
+        with c4:
+            row["high"] = st.number_input("High", float(row.get("high", 100)), key=f"fac_h_{i}",
+                                          label_visibility="collapsed", step=0.01, format="%.4f")
+        with c5:
+            if len(st.session_state.doe_factors_list) > 1:
+                if st.button("X", key=f"fac_del_{i}"):
+                    st.session_state.doe_factors_list.pop(i)
+                    st.rerun()
 
-        # Overall desirability
-        st.markdown("#### Overall Desirability")
-        d = result["desirability"]
-        if d >= 0.8:
-            st.success(f"D = {d:.3f} — Excellent")
-        elif d >= 0.5:
-            st.warning(f"D = {d:.3f} — Acceptable")
-        else:
-            st.error(f"D = {d:.3f} — Poor — consider adjusting response goals")
+    st.button("+ Add Factor", key="doe_add_f")
 
-        # Show optimizer warnings
-        for w in result.get("warnings", []):
-            st.warning(w)
+    # Responses
+    st.markdown("**Responses**")
+    if "doe_responses_list" not in st.session_state:
+        st.session_state.doe_responses_list = session.get("responses_json", []) or [
+            {"name": "", "goal": "maximize", "target": None, "low": 0.0, "high": 100.0}
+        ]
 
-        # ---- Response-surface plots ----
-        st.divider()
-        st.markdown("### Response Surfaces")
+    for i, row in enumerate(st.session_state.doe_responses_list):
+        c1, c2, c3, c4, c5 = st.columns([3, 1.5, 1.5, 1.5, 1])
+        with c1:
+            row["name"] = st.text_input("Name", row.get("name", ""), key=f"resp_n_{i}",
+                                        label_visibility="collapsed", placeholder=f"Response {i+1}")
+        with c2:
+            row["goal"] = st.selectbox("Goal", ["maximize", "minimize", "target"],
+                                       index=["maximize","minimize","target"].index(row.get("goal","maximize")),
+                                       key=f"resp_g_{i}", label_visibility="collapsed")
+        with c3:
+            if row["goal"] in ("maximize", "target"):
+                row["low"] = st.number_input("Low", float(row.get("low", 0)), key=f"resp_l_{i}",
+                                             label_visibility="collapsed", step=0.01, format="%.4f")
+        with c4:
+            if row["goal"] in ("minimize", "target"):
+                row["high"] = st.number_input("High", float(row.get("high", 100)), key=f"resp_h_{i}",
+                                              label_visibility="collapsed", step=0.01, format="%.4f")
+        with c5:
+            if len(st.session_state.doe_responses_list) > 1:
+                if st.button("X", key=f"resp_del_{i}"):
+                    st.session_state.doe_responses_list.pop(i)
+                    st.rerun()
 
-        design_df = pd.DataFrame(session.get("design_json", []))
-        factor_names = [f["name"] for f in factors]
-        continuous_factors = [f for f in factors if f["type"] == "continuous"]
+    st.button("+ Add Response", key="doe_add_r")
 
-        for r in responses:
-            rname = r["name"]
-            if rname not in models:
-                continue
-            model = models[rname]
+    # Save to session
+    valid_factors = [f for f in st.session_state.doe_factors_list if f.get("name") and str(f["name"]).strip()]
+    valid_responses = [r for r in st.session_state.doe_responses_list if r.get("name") and str(r["name"]).strip()]
+    session["factors_json"] = valid_factors
+    session["responses_json"] = valid_responses
 
-            # Main effects plot
-            if factor_names and design_df is not None and not design_df.empty:
-                merged = design_df.copy()
-                results_df = pd.DataFrame(session.get("results_json", []))
-                if not results_df.empty and rname in results_df.columns:
-                    merged[rname] = results_df[rname].values
-                    fig_main = _build_main_effects_plot(merged, factor_names, rname, model)
-                    st.plotly_chart(fig_main, use_container_width=True)
-
-            # Pareto
-            fig_pareto = _build_pareto_plot(model)
-            st.plotly_chart(fig_pareto, use_container_width=True)
-
-            # Contour + surface for 2+ continuous factors
-            if len(continuous_factors) >= 2:
-                x_name = continuous_factors[0]["name"]
-                y_name = continuous_factors[1]["name"]
-                fig_contour = _build_contour_plot(factors, model, rname, x_name, y_name)
-                st.plotly_chart(fig_contour, use_container_width=True)
-                fig_surface = _build_surface_plot(factors, model, rname, x_name, y_name)
-                st.plotly_chart(fig_surface, use_container_width=True)
-
-        # ---- Download summary ----
-        summary_rows = []
-        summary_rows.append(["Optimal Settings"])
-        for f in factors:
-            summary_rows.append([f["name"], result["optimal_settings"].get(f["name"], "")])
-        summary_rows.append([])
-        summary_rows.append(["Predicted Responses"])
-        for r in responses:
-            pred = result["predicted_responses"].get(r["name"], "")
-            pi = result["prediction_intervals"].get(r["name"], ["", ""])
-            summary_rows.append([r["name"], pred, f"[{pi[0]}, {pi[1]}]"])
-        summary_rows.append([])
-        summary_rows.append(["Overall Desirability", d])
-
-        summary_df = pd.DataFrame(summary_rows)
-        st.download_button(
-            "Download Summary (CSV)",
-            data=summary_df.to_csv(index=False, header=False),
-            file_name=f"doe_optimization_{session.get('name', 'doe')}.csv",
-            mime="text/csv",
-            key="doe_download_opt_summary",
-        )
-
-    st.divider()
-
-    # Navigation
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        if st.button("<- Back to Analyze", key="doe_opt_back"):
-            _go_to("analyze")
-            st.rerun()
-    with col2:
-        if st.button("New DOE", key="doe_new"):
-            _reset_doe()
+    if valid_factors and valid_responses and session.get("db_id") and session.get("status") == "defined":
+        from doe.persistence import DoeRepository
+        from config import DB_FILE
+        dr = DoeRepository(DB_FILE)
+        dr.update(session["db_id"], {"factors": valid_factors, "responses": valid_responses})
+        session["status"] = "designed"
 
 
-# ---------------------------------------------------------------------------
-# Visualization helpers
-# ---------------------------------------------------------------------------
-
-def _build_main_effects_plot(merged: pd.DataFrame, factor_names: list[str],
-                               response_name: str, model: dict) -> go.Figure:
-    """Build a main effects plot: one subplot per factor."""
-    n_factors = len(factor_names)
-    fig = make_subplots(
-        rows=1, cols=n_factors,
-        subplot_titles=[f.replace("_", " ").title() for f in factor_names],
-        horizontal_spacing=0.15,
-    )
-    for i, fname in enumerate(factor_names):
-        levels = sorted(merged[fname].unique())
-        means = [merged.loc[merged[fname] == l, response_name].mean() for l in levels]
-        actual_labels = [f"{l}" for l in levels]
-        fig.add_trace(
-            go.Scatter(x=actual_labels, y=means, mode="lines+markers",
-                       line=dict(width=2), marker=dict(size=8)),
-            row=1, col=i + 1,
-        )
-    fig.update_layout(height=400, margin=dict(t=60, b=40), showlegend=False)
-    return fig
-
-
-def _build_pareto_plot(model: dict) -> go.Figure:
-    """Build a Pareto chart of standardized effects."""
-    coefs = [c for c in model["coefficients"] if c["term"] != "Intercept"]
-    coefs.sort(key=lambda c: abs(c["estimate"]), reverse=True)
-
-    terms = [c["term"] for c in coefs]
-    estimates = [abs(c["estimate"]) for c in coefs]
-    colors = ["#C4523E" if c["significant"] else "#4A90D9" for c in coefs]
-
-    fig = go.Figure(go.Bar(
-        x=estimates,
-        y=terms,
-        orientation="h",
-        marker_color=colors,
-        text=[f"{e:.3f}" for e in estimates],
-        textposition="outside",
-    ))
-    fig.update_layout(
-        title="Pareto of Effects",
-        xaxis_title="|Effect Size|",
-        yaxis_title="",
-        height=max(300, len(terms) * 40 + 100),
-        margin=dict(l=120),
-        showlegend=False,
-    )
-    return fig
-
-
-def _build_contour_plot(factors: list[dict], model: dict, response_name: str,
-                         x_name: str, y_name: str) -> go.Figure:
-    """Build a contour plot for two factors."""
-    grid = np.linspace(-1, 1, 50)
-    Z = np.zeros((50, 50))
-    for i, xv in enumerate(grid):
-        for j, yv in enumerate(grid):
-            point = {f["name"]: 0.0 for f in factors}
-            point[x_name] = xv
-            point[y_name] = yv
-            Z[i, j] = predict_from_model(model, factors, point)
-
-    fig = go.Figure(go.Contour(
-        z=Z, x=grid, y=grid,
-        colorscale="RdYlBu_r",
-        contours=dict(showlabels=True, labelfont=dict(size=10)),
-    ))
-    fig.update_layout(
-        title=f"Contour: {response_name} — {x_name} vs {y_name}",
-        xaxis_title=f"{x_name} (coded)",
-        yaxis_title=f"{y_name} (coded)",
-        height=500,
-    )
-    return fig
-
-
-def _build_surface_plot(factors: list[dict], model: dict, response_name: str,
-                         x_name: str, y_name: str) -> go.Figure:
-    """Build a 3D response surface plot."""
-    grid = np.linspace(-1, 1, 30)
-    Z = np.zeros((30, 30))
-    for i, xv in enumerate(grid):
-        for j, yv in enumerate(grid):
-            point = {f["name"]: 0.0 for f in factors}
-            point[x_name] = xv
-            point[y_name] = yv
-            Z[i, j] = predict_from_model(model, factors, point)
-
-    fig = go.Figure(data=[go.Surface(z=Z, x=grid, y=grid, colorscale="RdYlBu_r")])
-    fig.update_layout(
-        title=f"Response Surface: {response_name}",
-        scene=dict(
-            xaxis_title=x_name, yaxis_title=y_name, zaxis_title=response_name,
-        ),
-        height=500,
-    )
-    return fig
-
-
-def _promote_to_full_factorial(session, doe_repo, factors, responses, models):
-    """Promote significant factors from screening to a new full factorial DOE."""
-    if not models:
-        st.warning("No analysis to promote from. Run analysis first.")
-        return
-
-    # Find first response and its significant factors
-    first_resp = list(models.values())[0]
-    significant_terms = [
-        c["term"] for c in first_resp["coefficients"]
-        if c["significant"] and c["term"] != "Intercept"
-        and "*" not in c["term"] and "^" not in c["term"]
-    ]
-
-    if not significant_terms:
-        st.warning("No significant factors found to promote.")
-        return
-
-    # Take top 3 significant factors
-    promoted_factors = [
-        f for f in factors if f["name"] in significant_terms[:3]
-    ]
-
-    if not promoted_factors:
-        st.warning("Could not map significant terms to factors.")
-        return
-
-    # Create new full factorial session
-    sid = doe_repo.create(
-        name=f"FF from screening: {session.get('name', 'DOE')}",
-        entry_type="full_factorial",
-        factors=promoted_factors,
-        responses=responses,
-    )
-
-    st.session_state.doe_session = {
-        "name": f"FF from screening: {session.get('name', 'DOE')}",
-        "entry_type": "full_factorial",
-        "status": "defined",
-        "factors_json": promoted_factors,
-        "responses_json": responses,
-        "design_json": None,
-        "results_json": None,
-        "model_json": None,
-        "optimum_json": None,
-        "db_id": sid,
-    }
-    _go_to("define")
-    st.success(f"Created new full factorial DOE with factors: "
-               f"{', '.join(f['name'] for f in promoted_factors)}")
+def _reset_doe():
+    st.session_state.doe_step = "landing"  # compat
+    st.session_state.doe_session = None
+    st.session_state.doe_session_id = None
+    st.session_state.doe_analysis_results = None
+    st.session_state.doe_profiler_positions = None
+    st.session_state.doe_active_tab = "design"
     st.rerun()
+
+
+def _load_session(doe_repo: DoeRepository, sid: int):
+    try:
+        s = doe_repo.load(sid)
+        # Backward compat: old sessions used 'model' column; new sessions use 'analysis'
+        analysis_data = s.get("analysis") or s.get("model")
+        st.session_state.doe_session = {
+            "name": s["name"],
+            "entry_type": s["entry_type"],
+            "status": s["status"],
+            "factors_json": s["factors"] if s["factors"] else [],
+            "responses_json": s["responses"] if s["responses"] else [],
+            "design_json": s.get("design"),
+            "results_json": s.get("results"),
+            "analysis_json": analysis_data,
+            "optimum_json": s.get("optimum"),
+            "db_id": sid,
+        }
+        st.session_state.doe_session_id = sid
+        st.session_state.doe_analysis_results = analysis_data
+        st.session_state.doe_active_tab = "analyze" if s.get("results") else "design"
+        st.rerun()
+    except KeyError:
+        st.error(f"Session {sid} not found.")
