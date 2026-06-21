@@ -10,3 +10,4 @@ node_modules/
 data/spc.db
 *.pptx
 /polymer_simulation/
+data/spc.db-journal
