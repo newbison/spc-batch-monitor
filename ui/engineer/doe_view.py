@@ -630,7 +630,7 @@ def _render_setup_section(session: dict):
         if is_cat:
             # One compact line: name | type ▼ | level inputs... | +level | ✕
             if "levels" not in row or not row["levels"]:
-                row["levels"] = ["A", "B"]
+                row["levels"] = ["", ""]
             n_levels = len(row["levels"])
             # Dynamic columns: name(2) + type(1.5) + one per level(each 1.5) + add(0.5) + del(0.5)
             cols = st.columns([2.5, 1.5] + [1.5] * n_levels + [0.5, 0.5])
@@ -644,7 +644,7 @@ def _render_setup_section(session: dict):
                 with cols[2 + li]:
                     row["levels"][li] = st.text_input(
                         f"Lv{li+1}", row["levels"][li], key=f"fac_lev_{i}_{li}",
-                        label_visibility="collapsed", placeholder=f"Level {li+1}",
+                        label_visibility="collapsed", placeholder=f"Condition {li+1}",
                     )
             with cols[2 + n_levels]:
                 if st.button("+", key=f"fac_addlev_{i}", help="Add level"):
