@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS doe_sessions (
     results     TEXT,
     model       TEXT,
     optimum     TEXT,
+    analysis    TEXT,
     created_at  TEXT DEFAULT (datetime('now')),
     updated_at  TEXT DEFAULT (datetime('now'))
 );
@@ -40,8 +41,9 @@ class DoeRepository:
     ALLOWED_COLUMNS = {
         "name", "status", "entry_type",
         "factors", "responses", "design", "results", "model", "optimum",
+        "analysis",
     }
-    JSON_COLUMNS = {"factors", "responses", "design", "results", "model", "optimum"}
+    JSON_COLUMNS = {"factors", "responses", "design", "results", "model", "optimum", "analysis"}
 
     @contextmanager
     def _conn(self):
@@ -95,7 +97,7 @@ class DoeRepository:
         """Load a DOE session by ID.
 
         Returns a dict with all columns. JSON columns (factors, responses,
-        design, results, model, optimum) are auto-parsed into Python objects.
+        design, results, model, optimum, analysis) are auto-parsed into Python objects.
         """
         with self._conn() as conn:
             row = conn.execute(
@@ -121,7 +123,7 @@ class DoeRepository:
         session_id : int
         updates : dict
             Keys are column names. JSON-serializable values are auto-serialized
-            for JSON columns (design, results, model, optimum).
+            for JSON columns (design, results, model, optimum, analysis).
             'status' and 'updated_at' are handled automatically.
         """
         set_parts = []

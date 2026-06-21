@@ -179,3 +179,38 @@ def test_update_whitelisted_columns_work():
         # JSON columns auto-parsed in updated load()
         assert isinstance(session["design"], list)
         assert isinstance(session["model"], dict)
+
+
+def test_analysis_column_crud():
+    """analysis column should store and retrieve JSON data."""
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        db_path = Path(tmpdir) / "test.db"
+        repo = DoeRepository(db_path)
+
+        sid = repo.create(
+            "Analysis Test",
+            "full_factorial",
+            [{"name": "A", "type": "continuous", "low": 0, "high": 10}],
+            [{"name": "y", "goal": "maximize", "low": 0, "high": 100}],
+        )
+
+        analysis_data = {
+            "y": {
+                "model_type": "linear",
+                "anova": {
+                    "source": ["Model", "A", "Residual", "Total"],
+                    "ss": [0.5, 0.3, 0.1, 0.6],
+                    "df": [1, 1, 2, 3],
+                    "ms": [0.5, 0.3, 0.05, None],
+                    "f": [10.0, 6.0, None, None],
+                    "p": [0.05, 0.13, None, None],
+                },
+                "r_squared": 0.833,
+            }
+        }
+
+        repo.update(sid, {"analysis": analysis_data, "status": "analyzed"})
+
+        loaded = repo.load(sid)
+        assert loaded["analysis"] == analysis_data
+        assert loaded["status"] == "analyzed"
