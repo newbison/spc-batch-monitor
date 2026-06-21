@@ -2,9 +2,11 @@
 
 import numpy as np
 import pandas as pd
-from doe.designs import generate_full_factorial, decode_to_actual
+from doe.designs import generate_full_factorial, generate_ccd, decode_to_actual
 from doe.analysis import fit_linear, fit_rsm, predict_from_model, _is_center_row
 from doe.optimization import optimize
+from doe.residuals import compute_residuals, build_residual_plots
+from doe.profiler import compute_profile
 
 
 def test_full_pipeline_2_factor():
@@ -88,6 +90,63 @@ def test_full_pipeline_2_factor():
     coded_point = {"temp": 1.0, "speed": 1.0}  # both at high
     pred_high = predict_from_model(model_s, factors, coded_point)
     assert pred_high > 17.0  # both at high should give high strength
+
+
+def test_full_pipeline_with_profiler():
+    """End-to-end: design CCD → analyze with ANOVA+residuals → profiler."""
+    factors = [
+        {"name": "T", "type": "continuous", "low": 80, "high": 120},
+        {"name": "P", "type": "continuous", "low": 2.0, "high": 4.0},
+    ]
+
+    # Generate CCD
+    coded = generate_ccd(factors, alpha="rotatable", n_center=3)
+    actual = decode_to_actual(coded, factors)
+
+    # Simulate results: y = 10 + 3*T + 2*P + noise
+    np.random.seed(42)
+    results_rows = []
+    for _, row in coded.iterrows():
+        y = 10 + 3 * row["T"] + 2 * row["P"] + np.random.normal(0, 0.2)
+        results_rows.append({"run": int(row["run"]), "y": round(y, 3)})
+    results = pd.DataFrame(results_rows)
+
+    # Analyze
+    model = fit_rsm(factors, coded, results, "y")
+
+    # Model should have ANOVA and residuals
+    assert "anova" in model
+    assert model["anova"]["source"][0] == "Model"
+    assert model["r_squared"] > 0.8  # good fit
+
+    # Residual diagnostics
+    X = np.column_stack([
+        np.ones(len(coded)),
+        coded["T"].values,
+        coded["P"].values,
+        coded["T"].values * coded["P"].values,
+        coded["T"].values ** 2,
+        coded["P"].values ** 2,
+    ])
+    resid = compute_residuals(
+        np.array(model["residuals"]["observed"]),
+        np.array(model["residuals"]["predicted"]),
+        X,
+    )
+    assert len(resid["residuals"]) == len(coded)
+    assert resid["shapiro_p"] is not None
+
+    # Residual plots
+    fig = build_residual_plots(resid)
+    assert hasattr(fig, "data")
+
+    # Profiler
+    models = {"y": model}
+    responses = [{"name": "y", "goal": "maximize", "low": 0, "high": 20}]
+    profile = compute_profile(factors, models, responses, {"T": 0.5, "P": -0.5})
+    assert "y" in profile
+    assert "predicted" in profile["y"]
+    assert profile["y"]["desirability"] > 0
 
 
 def test_pipeline_with_center_curvature():
