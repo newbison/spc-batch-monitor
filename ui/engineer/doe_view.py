@@ -53,13 +53,13 @@ def render_doe_page(repo: DataRepository):
         # Tab buttons
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("DESIGN", use_container_width=True,
+            if st.button("📐  DESIGN", use_container_width=True,
                          type="primary" if st.session_state.doe_active_tab == "design" else "secondary",
                          key="doe_tab_design"):
                 st.session_state.doe_active_tab = "design"
                 st.rerun()
         with c2:
-            if st.button("ANALYZE", use_container_width=True,
+            if st.button("📊  ANALYZE", use_container_width=True,
                          type="primary" if st.session_state.doe_active_tab == "analyze" else "secondary",
                          key="doe_tab_analyze"):
                 st.session_state.doe_active_tab = "analyze"
@@ -71,7 +71,7 @@ def render_doe_page(repo: DataRepository):
             st.caption(f"Name: {session.get('name', 'Untitled')}")
             st.caption(f"Type: {session.get('entry_type', '—').replace('_', ' ').title()}")
             st.divider()
-            if st.button("New DOE", use_container_width=True):
+            if st.button("➕  New DOE", use_container_width=True):
                 _reset_doe()
         else:
             st.caption("No active session")
@@ -80,9 +80,13 @@ def render_doe_page(repo: DataRepository):
         saved = doe_repo.list_sessions()
         if saved:
             st.divider()
-            st.caption("Saved sessions:")
-            for s in saved[:5]:
-                if st.button(f"{s['name'][:25]} ({s['status']})", key=f"doe_load_{s['id']}"):
+            st.markdown('<p class="sidebar-section-label">SAVED SESSIONS</p>', unsafe_allow_html=True)
+            status_icon = {"defined": "⚪", "designed": "🔵", "running": "🟡", "analyzed": "🟢", "optimized": "✅"}
+            for s in saved[:8]:
+                icon = status_icon.get(s["status"], "⚪")
+                label = f"{icon} {s['name'][:28]}"
+                if st.button(label, key=f"doe_load_{s['id']}", use_container_width=True,
+                             help=f"Status: {s['status']}  |  Type: {s['entry_type']}\nClick to load this session"):
                     _load_session(doe_repo, s["id"])
 
     # --- Main content ---

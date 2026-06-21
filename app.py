@@ -152,6 +152,13 @@ CUSTOM_CSS = """
     /* --- Other sidebar buttons (non-selector) --- */
     section[data-testid="stSidebar"] button {
         color: #F0E6D8 !important;
+        background: rgba(255, 255, 255, 0.08) !important;
+        border-color: rgba(255, 255, 255, 0.12) !important;
+    }
+    section[data-testid="stSidebar"] button:hover {
+        background: rgba(255, 255, 255, 0.15) !important;
+        border-color: #C4734F !important;
+        color: #FFFFFF !important;
     }
     section[data-testid="stSidebar"] button[kind="primary"] {
         background: #C4734F !important;
@@ -162,6 +169,8 @@ CUSTOM_CSS = """
     }
     section[data-testid="stSidebar"] button[kind="secondary"] {
         color: #D4C4B0 !important;
+        background: rgba(255, 255, 255, 0.06) !important;
+        border-color: rgba(255, 255, 255, 0.10) !important;
     }
 
     /* --- Metric cards --- */
