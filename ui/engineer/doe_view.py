@@ -17,13 +17,12 @@ from doe.designs import (
     generate_fractional_factorial,
     generate_box_behnken,
     generate_ccd,
-    add_center_points,
     decode_to_actual,
     get_fractional_run_count,
 )
-from doe.analysis import fit_linear, fit_rsm, has_curvature, predict_from_model, _is_center_row, anova_table
+from doe.analysis import fit_linear, fit_rsm, _is_center_row, anova_table
 from doe.optimization import optimize as doe_optimize
-from doe.residuals import compute_residuals as compute_residuals_fn, build_residual_plots
+from doe.residuals import compute_residuals, build_residual_plots
 from doe.profiler import compute_profile, compute_overall_desirability
 from doe.evaluate import evaluate_design
 
@@ -168,7 +167,6 @@ def _render_design_tab(doe_repo: DoeRepository):
 
             session["design_json"] = coded_df.to_dict("records")
             session["design_type"] = design_type
-            st.session_state.doe_design_generated = True
 
             if session.get("db_id"):
                 doe_repo.update(session["db_id"], {
@@ -319,8 +317,8 @@ def _render_analyze_tab(doe_repo: DoeRepository):
             st.dataframe(anova_df, use_container_width=True, hide_index=True)
 
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("R", f"{model.get('r_squared', 0):.4f}")
-            c2.metric("Adj R", f"{model.get('r_squared_adj', 0):.4f}")
+            c1.metric("R²", f"{model.get('r_squared', 0):.4f}")
+            c2.metric("Adj R²", f"{model.get('r_squared_adj', 0):.4f}")
             c3.metric("RMSE", f"{model.get('rmse', 0):.4f}")
             lof_p = model.get("lack_of_fit_p")
             c4.metric("Lack-of-fit p", f"{lof_p:.4f}" if lof_p is not None else "N/A")
@@ -352,8 +350,7 @@ def _render_analyze_tab(doe_repo: DoeRepository):
             obs = np.array(resid_data.get("observed", []))
             pred = np.array(resid_data.get("predicted", []))
             X = np.column_stack([np.ones(len(obs)), np.arange(len(obs))])  # placeholder
-            from doe.residuals import compute_residuals as cr
-            resid_dict = cr(obs, pred, X, np.array(resid_data.get("run", [])))
+            resid_dict = compute_residuals(obs, pred, X, np.array(resid_data.get("run", [])))
 
             fig = build_residual_plots(resid_dict)
             st.plotly_chart(fig, use_container_width=True)
