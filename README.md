@@ -1,100 +1,127 @@
-# 🔥  Forge AI
+<p align="right">
+  <b>English</b> · <a href="README_CN.md">中文</a>
+</p>
 
-AI-Powered Materials Intelligence Platform — a Streamlit hub application for **Statistical Process Control (SPC)** of chemical batch coating processes and **Design of Experiments (DOE)** for process optimization. Tracks 4 quality parameters per batch with variable subgroup sizes (5–15 replicates) across multiple formulas.
+<p align="center">
+  <a href="https://spc-batch-monito-tgnpmprhsqmpuxr4q6wktu.streamlit.app/"><img src="https://img.shields.io/badge/Live_Demo-Streamlit-00BFA5?style=for-the-badge&logo=streamlit&logoColor=white" alt="Live Demo"></a>
+  <a href="https://github.com/newbison/spc-batch-monitor"><img src="https://img.shields.io/badge/GitHub-Open_Source-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub"></a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white" alt="Streamlit">
+  <img src="https://img.shields.io/badge/Plotly-3F4F75?style=for-the-badge&logo=plotly&logoColor=white" alt="Plotly">
+  <img src="https://img.shields.io/badge/NumPy-013243?style=for-the-badge&logo=numpy&logoColor=white" alt="NumPy">
+  <img src="https://img.shields.io/badge/SciPy-8CAAE6?style=for-the-badge&logo=scipy&logoColor=white" alt="SciPy">
+  <img src="https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white" alt="SQLite">
+  <img src="https://img.shields.io/badge/Pytest-0A9EDC?style=for-the-badge&logo=pytest&logoColor=white" alt="Pytest">
+</p>
+
+<h1 align="center">🔥 FORGE AI — SPC Platform</h1>
+<h3 align="center">Statistical Process Control & Design of Experiments</h3>
+<h4 align="center" style="color:#8895A8;font-weight:400">
+  Turn batch data into process intelligence. From control charts to DOE optimization — all in one platform.
+</h4>
+
+<p align="center">
+  <b>Upload your data → see control limits and violations → analyze capability → design experiments → optimize</b><br>
+  X-bar & R charts · Western Electric rules · Capability analysis · Screening & full factorial designs · RSM · Desirability optimization
+</p>
+
+---
 
 ![App screenshot](image/README/1778922140812.png)
 
+---
+
+## What Is This?
+
+Whether you are a **process engineer** monitoring production quality, an **R&D scientist** optimizing a formulation, or a **quality manager** tracking KPIs — the challenge is the same:
+
+> *You need to know if your process is in control, capable, and where to focus improvement — without jumping between six different tools.*
+
+A production engineer spends hours making X-bar and R charts in Excel. An R&D scientist runs a one-factor-at-a-time experiment because DOE software is too expensive or too complex. A quality manager pulls data from three systems to get one dashboard view.
+
+**FORGE AI — SPC Platform fixes this. One tool for monitoring, analysis, and optimization.**
+
+```
+  ┌─────────────┐     ┌──────────────────┐     ┌──────────────────┐     ┌───────────────┐
+  │             │     │                  │     │                  │     │               │
+  │   Upload    │ ──▶ │  SPC Analysis    │ ──▶ │  DOE Design &    │ ──▶ │  Manager      │
+  │   Batch     │     │  · Control charts │     │  Analysis        │     │  Dashboard    │
+  │   Data      │     │  · Capability     │     │  · Factorial     │     │  · KPIs       │
+  │             │     │  · Rules checks   │     │  · RSM / Surface │     │  · Trends     │
+  └─────────────┘     └──────────────────┘     └──────────────────┘     └───────────────┘
+```
+
+---
+
 ## Features
 
-### Hub Shell
+### Multi-Role Platform
 
-- **Multi-app architecture** — SPC and DOE run as independent sub-apps within a shared hub
-- **App selector sidebar** — big toggle buttons to switch between SPC and DOE
-- **Role selector** — horizontal bar at the top of the main content area (Operator / Engineer / Manager / Admin)
-- **Info bar** — shows current page and live data summary (rows, formulas, batches, replicates)
-- **External tool links** — sidebar links to companion tools (e.g. Polymer Simulation)
+| Role | Access | What You Can Do |
+|------|--------|-----------------|
+| 👨‍🔬 **Operator** | Data Entry | Upload CSVs, manual entry, view/edit today's batches |
+| 🔧 **Engineer** | SPC + DOE | Control charts, capability, DOE wizard (define→design→capture→analyze→optimize) |
+| 📊 **Manager** | Dashboard | KPI cards, status table (🟢/🟡/🔴/⚪), trend analysis |
+| ⚙️ **Admin** | Data Management | Filter, edit, delete, export, import — full CRUD |
 
 ### SPC — Statistical Process Control
 
-- **X-bar & R control charts** with dynamic subgroup sizes (n=5–15) and ASTM E2587 constants
-- **Western Electric rules** — Rule 1 (beyond 3σ), Rule 2 (2 of 3 beyond 2σ), Rule 4 (8 consecutive same side), trending (6 up/down)
-- **Trend analysis** — run chart, moving range chart, rolling Ppk (sliding window)
-- **Process capability** — Pp, Ppk, PPM with histogram and spec lines (supports one-sided specs via NaN)
+- **X-bar & R control charts** with dynamic subgroup sizes (n=2–25) and ASTM E2587 constants
+- **Western Electric Rules** — Rule 1 (beyond 3σ), Rule 2 (2 of 3 beyond 2σ), Rule 4 (8 consecutive same side), trending (6 up/down)
+- **Trend analysis** — run chart, moving range chart, rolling Ppk with sliding window
+- **Process capability** — Pp, Ppk, PPM with histogram and spec lines (one-sided specs via NaN)
 - **Batch-to-batch boxplots** with spec line overlays
 - **PPTX report export** — auto-generated SPC reports with charts and narrative summaries
 
 ### DOE — Design of Experiments
 
-- **Full & fractional factorial designs** — 2^k full factorial, 2^(k-p) fractional factorial (Resolution IV/V), and Box-Behnken RSM designs
-- **No external DOE library dependency** — self-contained factorial generators in pure NumPy
-- **Regression analysis** — linear models with main effects + 2-way interactions, plus RSM quadratic models via statsmodels
-- **Curvature detection** — automatic two-sample t-test comparing center-point vs. factorial-point responses
+- **Full & fractional factorial designs** — 2^k full factorial, 2^(k-p) fractional factorial (Resolution IV/V), Box-Behnken RSM
+- **No external DOE library** — self-contained factorial generators in pure NumPy
+- **Regression analysis** — linear models with main effects + 2-way interactions, plus RSM quadratic models (statsmodels)
+- **Curvature detection** — two-sample t-test comparing center-point vs. factorial-point responses
 - **Visualization** — main effects plots, Pareto of effects, contour plots, 3D response surfaces
 - **Derringer-Suich desirability** — multi-response optimization with prediction intervals and multi-start scipy optimization
-- **One-sided response specs** — support for minimize-only or maximize-only objectives
-- **Session persistence** — save, resume, and iterate on DOE experiments across sessions
+- **Session persistence** — save, resume, and iterate across sessions
 
-### Platform
+---
 
-- **Role-based UI** — Operator (data entry), Engineer (SPC + DOE), Manager (dashboard), Admin (data management)
-- **SQLite storage** with repository pattern (swappable to PostgreSQL)
-- **CSV upload with validation + dedup** — archived with timestamp audit trail
-- **Sample data** — pre-generated on first launch if the database is empty
-
-## Screenshots
-
-- **Operator — Data Entry** ![Data entry](image/README/1778922162913.png)
-- **Engineer — SPC Analysis** ![SPC charts](image/README/1778922184008.png)
-- **Engineer — DOE Wizard** ![DOE interface](image/README/1778922204098.png)
-- **Manager — Dashboard** — KPI cards, status table, trend expander
-- **Admin — Data Management** — Filter, edit, delete, export, import
-
-## Tech Stack
-
-| Layer      | Technology |
-| ---------- | ---------- |
-| UI         | Streamlit |
-| Charts     | Plotly |
-| SPC Engine | Pure Python (NumPy/SciPy) |
-| DOE Engine | NumPy (self-contained generators), statsmodels, scipy.optimize |
-| Reports    | python-pptx, Kaleido |
-| Database   | SQLite (WAL mode) |
-| Testing    | Pytest (90+ tests) |
-
-## Installation
+## Quick Start
 
 ```bash
 git clone https://github.com/newbison/spc-batch-monitor.git
 cd spc-batch-monitor
 pip install -r requirements.txt
-```
-
-No external DOE library required — the factorial generators (`doe/_factorial.py`) are self-contained and work on all Python versions (3.9+).
-
-## Usage
-
-```bash
 streamlit run app.py
 ```
 
-On first launch, sample data is auto-migrated from `data/coating_batches.csv` into SQLite. Select an app (SPC or DOE) from the sidebar, then choose your role from the top bar.
+That's it. Sample data auto-loads on first launch. Select an app (SPC or DOE) from the sidebar, then choose your role from the top bar.
+
+No external DOE library required — the factorial generators are self-contained and work on Python 3.9+.
+
+---
 
 ## Monitored Parameters
 
-| Parameter         | Replicates | LSL    | USL    | Units   |
-| ----------------- | ---------- | ------ | ------ | ------- |
-| Adhesion          | 5          | 0.6    | 1.5    | N/mm    |
-| Cohesion          | 15         | 1000.0 | —      | —       |
-| Rolling Ball Tack | 8          | 10.0   | 50.0   | mm      |
-| Liner Release     | 10         | 5.0    | 20.0   | g/inch  |
+| Parameter | Replicates | LSL | USL | Units |
+|-----------|-----------|-----|-----|-------|
+| Viscosity | 5 | 0.6 | 1.5 | N/mm |
+| Density | 15 | 1000.0 | — | — |
+| Hardness | 8 | 10.0 | 50.0 | mm |
+| Elasticity | 10 | 5.0 | 20.0 | g/inch |
+
+Variable subgroup sizes (5–15) auto-detected by counting non-NaN replicates per row.
+
+---
 
 ## Architecture
 
-```text
+```
 app.py (Hub shell)
  ├── SPC sub-app
- │   ├── Role + info bar (top of main content)
- │   ├── Sidebar (engineer context: formula/param)
+ │   ├── Role bar + Sidebar (formula/param selection)
  │   ├── UI (Streamlit pages by role)
  │   │   └─> Visualization (Plotly chart builders)
  │   │        └─> SPC Engine (pure Python — no framework deps)
@@ -103,14 +130,30 @@ app.py (Hub shell)
  │   └── Reports (python-pptx + Kaleido)
  │
  └── DOE sub-app
-     ├── doe/_factorial.py   — self-contained fullfact, fracfact, bbdesign
-     ├── doe/designs.py       — factorial + Box-Behnken design matrices
-     ├── doe/analysis.py      — linear + RSM regression (statsmodels)
-     ├── doe/optimization.py  — Derringer-Suich desirability (scipy)
-     └── doe/persistence.py   — SQLite session CRUD (JSON columns)
+     ├── _factorial.py  — self-contained fullfact, fracfact, bbdesign
+     ├── designs.py      — factorial + Box-Behnken design matrices
+     ├── analysis.py     — linear + RSM regression (statsmodels)
+     ├── optimization.py — Derringer-Suich desirability (scipy)
+     └── persistence.py  — SQLite session CRUD (JSON columns)
 ```
 
 All engines are **framework-agnostic** — they take DataFrames or arrays and return plain dicts. The repository pattern abstracts storage so SQLite can be swapped for PostgreSQL without touching UI or business logic.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| **UI** | Streamlit |
+| **Charts** | Plotly |
+| **SPC Engine** | Pure Python (NumPy/SciPy) |
+| **DOE Engine** | NumPy, statsmodels, scipy.optimize |
+| **Reports** | python-pptx, Kaleido |
+| **Database** | SQLite (WAL mode, repository pattern) |
+| **Testing** | Pytest (90+ tests) |
+
+---
 
 ## Testing
 
@@ -119,7 +162,6 @@ pytest tests/ -v
 ```
 
 90+ tests covering:
-
 - Control limits (X-bar & R with dynamic n)
 - Western Electric rules (1, 2, 4, trending)
 - Capability calculations (Pp, Ppk, PPM, one-sided specs)

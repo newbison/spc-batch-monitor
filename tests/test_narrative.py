@@ -12,7 +12,7 @@ def test_capable_process_no_violations():
               "baseline_n": 5}
     result = build_summary(
         cap=cap, violations=violations, limits=limits,
-        formula="Coating A", parameter="adhesion",
+        formula="Grade A", parameter="viscosity",
         date_range=("2025-01-01", "2025-03-15"), n_batches=40,
     )
     assert "1.52" in result["verdict"]
@@ -35,7 +35,7 @@ def test_marginal_process_with_violations():
     limits = {"xbar": np.zeros(20), "baseline_n": 10}
     result = build_summary(
         cap=cap, violations=violations, limits=limits,
-        formula="Coating A", parameter="adhesion",
+        formula="Grade A", parameter="viscosity",
         date_range=("2025-03-01", "2025-03-28"),
         n_batches=20, batch_ids=batch_ids, dates=dates,
     )
@@ -57,7 +57,7 @@ def test_not_capable_process():
     limits = {"xbar": np.zeros(10), "baseline_n": 10}
     result = build_summary(
         cap=cap, violations=violations, limits=limits,
-        formula="Coating A", parameter="adhesion",
+        formula="Grade A", parameter="viscosity",
         date_range=("2025-01-01", "2025-01-31"),
         n_batches=10, batch_ids=batch_ids, dates=dates,
     )
@@ -73,7 +73,7 @@ def test_no_spec_limits():
     limits = {"xbar": np.zeros(5), "baseline_n": 5}
     result = build_summary(
         cap=cap, violations=violations, limits=limits,
-        formula="Coating A", parameter="adhesion",
+        formula="Grade A", parameter="viscosity",
         date_range=("2025-01-01", "2025-01-31"), n_batches=5,
     )
     assert "no spec" in result["verdict"].lower() or "nan" in result["verdict"].lower()
@@ -89,7 +89,7 @@ def test_trend_detection():
     limits = {"xbar": xbar, "baseline_n": 10}
     result = build_summary(
         cap=cap, violations=violations, limits=limits,
-        formula="Coating A", parameter="adhesion",
+        formula="Grade A", parameter="viscosity",
         date_range=("2025-01-01", "2025-03-15"), n_batches=15,
     )
     assert "declin" in result["trend_note"].lower() or "downward" in result["trend_note"].lower()

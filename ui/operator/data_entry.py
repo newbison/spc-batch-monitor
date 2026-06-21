@@ -22,23 +22,23 @@ def _build_template_csv(n: int) -> str:
     rep_cols = [f"rep{i}" for i in range(1, n + 1)]
     rows = [
         {
-            "date": "2025-06-01", "batch_id": "COAT-XXX", "formula": "Your Formula",
-            "parameter": "adhesion", "lower_spec": 0.6, "upper_spec": 1.5,
+            "date": "2025-06-01", "batch_id": "BATCH-XXX", "formula": "Your Formula",
+            "parameter": "viscosity", "lower_spec": 0.6, "upper_spec": 1.5,
             **{f"rep{i}": round(1.05 + (i - 3) * 0.04, 3) for i in range(1, n + 1)},
         },
         {
-            "date": "2025-06-01", "batch_id": "COAT-XXX", "formula": "Your Formula",
-            "parameter": "cohesion", "lower_spec": 1000.0, "upper_spec": None,
+            "date": "2025-06-01", "batch_id": "BATCH-XXX", "formula": "Your Formula",
+            "parameter": "density", "lower_spec": 1000.0, "upper_spec": None,
             **{f"rep{i}": round(1500 + (i - 5) * 40) for i in range(1, n + 1)},
         },
         {
-            "date": "2025-06-01", "batch_id": "COAT-XXX", "formula": "Your Formula",
-            "parameter": "rolling_ball_tack", "lower_spec": 10.0, "upper_spec": 50.0,
+            "date": "2025-06-01", "batch_id": "BATCH-XXX", "formula": "Your Formula",
+            "parameter": "hardness", "lower_spec": 10.0, "upper_spec": 50.0,
             **{f"rep{i}": round(30 + (i - 5) * 2, 1) for i in range(1, n + 1)},
         },
         {
-            "date": "2025-06-01", "batch_id": "COAT-XXX", "formula": "Your Formula",
-            "parameter": "liner_release", "lower_spec": 5.0, "upper_spec": 20.0,
+            "date": "2025-06-01", "batch_id": "BATCH-XXX", "formula": "Your Formula",
+            "parameter": "elasticity", "lower_spec": 5.0, "upper_spec": 20.0,
             **{f"rep{i}": round(12.5 + (i - 5) * 0.8, 2) for i in range(1, n + 1)},
         },
     ]
@@ -82,7 +82,7 @@ def _render_csv_upload(repo: DataRepository):
 | `date` | Batch date (YYYY-MM-DD) |
 | `batch_id` | Unique batch/lot identifier |
 | `formula` | Formula or product name |
-| `parameter` | Test name (e.g. adhesion, cohesion, rolling_ball_tack, liner_release) |
+| `parameter` | Test name (e.g. viscosity, density, hardness, elasticity) |
 | `rep1` … `rep{n}` | {n} replicate measurements |
 | `lower_spec` | Lower specification limit (leave blank if none) |
 | `upper_spec` | Upper specification limit (leave blank if none) |
@@ -176,7 +176,7 @@ def _render_manual_entry(repo: DataRepository):
 
     col1, col2 = st.columns(2)
     with col1:
-        batch_id = st.text_input("Batch ID", value="COAT-", key="entry_batch_id")
+        batch_id = st.text_input("Batch ID", value="BATCH-", key="entry_batch_id")
     with col2:
         batch_date = st.date_input("Date", value=date.today(), key="entry_date")
 
@@ -184,7 +184,7 @@ def _render_manual_entry(repo: DataRepository):
 
     params = repo.get_parameters()
     if not params:
-        params = ["adhesion", "cohesion", "rolling_ball_tack", "liner_release"]
+        params = ["viscosity", "density", "hardness", "elasticity"]
 
     measurements = {}
     cols = st.columns(len(params))
@@ -232,7 +232,7 @@ def _render_manual_entry(repo: DataRepository):
                         val = rcols[j].number_input(
                             f"R{idx + 1}", value=default,
                             key=f"{param}_r{idx + 1}",
-                            format="%.3f" if param == "liner_release" else "%.2f",
+                            format="%.3f" if param == "elasticity" else "%.2f",
                             label_visibility="collapsed",
                         )
                         rep_vals.append(val)

@@ -2,7 +2,7 @@
 
 ## Overview
 
-A Streamlit web app for SPC monitoring of batch coating processes and DOE (Design of Experiments). SPC monitors 4 parameters (adhesion, cohesion, rolling_ball_tack, liner_release) with variable subgroup sizes (5–15 replicates). DOE supports full/fractional factorial and Box-Behnken designs with RSM analysis and multi-response desirability optimization. Multi-role support: operator data entry, engineer SPC analysis + DOE, manager dashboards, admin data management.
+A Streamlit web app for SPC monitoring of batch manufacturing processes and DOE (Design of Experiments). SPC monitors 4 parameters (viscosity, density, hardness, elasticity) with variable subgroup sizes (5–15 replicates). DOE supports full/fractional factorial and Box-Behnken designs with RSM analysis and multi-response desirability optimization. Multi-role support: operator data entry, engineer SPC analysis + DOE, manager dashboards, admin data management.
 
 ## Tech Stack
 
@@ -32,7 +32,7 @@ SPC/
 ├── config.py                    # Paths, SPC constants (A2/D3/D4 by n)
 ├── requirements.txt             # Python deps
 ├── data/
-│   ├── coating_batches.csv      # Generated sample data (120 rows)
+│   ├── batch_data.csv          # Generated sample data (120 rows)
 │   ├── generate_samples.py      # Dummy data generator
 │   └── uploads/                 # Timestamped CSV upload archive (audit trail)
 ├── data_access/
@@ -89,22 +89,22 @@ SPC/
 
 ## Current Scope
 
-### Coating Process
-- 2 formulas (Coating A, Coating B), 30 batches each
+### Manufacturing Process
+- 2 formulas (Grade A, Grade B), 30 batches each
 - 4 parameters with variable replicates
 
 | Parameter | Reps | LSL | USL | Units |
 |-----------|------|-----|-----|-------|
-| adhesion | 5 | 0.6 | 1.5 | N/mm |
-| cohesion | 15 | 1000.0 | — | — |
-| rolling_ball_tack | 8 | 10.0 | 50.0 | mm |
-| liner_release | 10 | 5.0 | 20.0 | g/inch |
+| viscosity | 5 | 0.6 | 1.5 | N/mm |
+| density | 15 | 1000.0 | — | — |
+| hardness | 8 | 10.0 | 50.0 | mm |
+| elasticity | 10 | 5.0 | 20.0 | g/inch |
 
 ### Data Format (CSV / SQLite)
 
 ```
 date,batch_id,formula,parameter,lower_spec,upper_spec,rep1,...,rep15
-2025-01-02,COAT-001,Coating A,adhesion,0.6,1.5,1.118,1.157,1.201,...,NaN
+2025-01-02,BATCH-001,Grade A,viscosity,0.6,1.5,1.118,1.157,1.201,...,NaN
 ```
 
 - Specs are inline per-row (different formulas can have different limits)
@@ -132,7 +132,7 @@ date,batch_id,formula,parameter,lower_spec,upper_spec,rep1,...,rep15
 2. **Repository pattern** — `base.py` defines interface. `SqliteRepository` today. Drop in PostgreSQL later.
 3. **SQLite with WAL** — replaced single-file CSV. Dedup via UNIQUE(batch_id, formula, parameter).
 4. **Validation gate** — `validate_rows()` rejects negative values, bad dates, non-numeric data before any write.
-5. **Auto-migration** — existing `coating_batches.csv` imported into SQLite on first run.
+5. **Auto-migration** — existing `batch_data.csv` imported into SQLite on first run.
 6. **Specs travel with data** — each row has `lower_spec`/`upper_spec`. Different formulas can have different limits.
 7. **Upload versioning** — every uploaded CSV archived to `data/uploads/` with timestamp prefix.
 8. **Pp/Ppk uses overall σ** (all X-bar values across batches).

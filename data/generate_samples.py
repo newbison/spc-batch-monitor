@@ -1,4 +1,4 @@
-"""Generate dummy coating batch data for SPC development."""
+"""Generate dummy batch data for SPC development."""
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -7,37 +7,37 @@ np.random.seed(42)
 
 # Each parameter can have its own replicate count
 PARAM_CONFIG = {
-    "adhesion":          {"reps": 5,  "target": 1.05, "sigma_between": 0.15, "sigma_within": 0.05, "lsl": 0.6, "usl": 1.5},
-    "cohesion":          {"reps": 15, "target": 1500, "sigma_between": 200,  "sigma_within": 50,   "lsl": 1000.0, "usl": float("nan")},
-    "rolling_ball_tack": {"reps": 8,  "target": 30,   "sigma_between": 8,    "sigma_within": 3,    "lsl": 10.0, "usl": 50.0},
-    "liner_release":     {"reps": 10, "target": 12.5, "sigma_between": 3,    "sigma_within": 1,    "lsl": 5.0, "usl": 20.0},
+    "viscosity":          {"reps": 5,  "target": 1.05, "sigma_between": 0.15, "sigma_within": 0.05, "lsl": 0.6, "usl": 1.5},
+    "density":            {"reps": 15, "target": 1500, "sigma_between": 200,  "sigma_within": 50,   "lsl": 1000.0, "usl": float("nan")},
+    "hardness":           {"reps": 8,  "target": 30,   "sigma_between": 8,    "sigma_within": 3,    "lsl": 10.0, "usl": 50.0},
+    "elasticity":         {"reps": 10, "target": 12.5, "sigma_between": 3,    "sigma_within": 1,    "lsl": 5.0, "usl": 20.0},
 }
 
 FORMULAS = {
-    "Coating A": {
-        "adhesion":          {"reps": 5,  "target": 1.05, "sigma_between": 0.15, "sigma_within": 0.05, "lsl": 0.6, "usl": 1.5},
-        "cohesion":          {"reps": 15, "target": 1500, "sigma_between": 200,  "sigma_within": 50,   "lsl": 1000.0, "usl": float("nan")},
-        "rolling_ball_tack": {"reps": 8,  "target": 30,   "sigma_between": 8,    "sigma_within": 3,    "lsl": 10.0, "usl": 50.0},
-        "liner_release":     {"reps": 10, "target": 12.5, "sigma_between": 3,    "sigma_within": 1,    "lsl": 5.0, "usl": 20.0},
+    "Grade A": {
+        "viscosity":          {"reps": 5,  "target": 1.05, "sigma_between": 0.15, "sigma_within": 0.05, "lsl": 0.6, "usl": 1.5},
+        "density":            {"reps": 15, "target": 1500, "sigma_between": 200,  "sigma_within": 50,   "lsl": 1000.0, "usl": float("nan")},
+        "hardness":           {"reps": 8,  "target": 30,   "sigma_between": 8,    "sigma_within": 3,    "lsl": 10.0, "usl": 50.0},
+        "elasticity":         {"reps": 10, "target": 12.5, "sigma_between": 3,    "sigma_within": 1,    "lsl": 5.0, "usl": 20.0},
     },
-    "Coating B": {
-        "adhesion":          {"reps": 5,  "target": 1.20, "sigma_between": 0.18, "sigma_within": 0.06, "lsl": 0.6, "usl": 1.5},
-        "cohesion":          {"reps": 15, "target": 1800, "sigma_between": 250,  "sigma_within": 60,   "lsl": 1000.0, "usl": float("nan")},
-        "rolling_ball_tack": {"reps": 8,  "target": 35,   "sigma_between": 9,    "sigma_within": 3.5,  "lsl": 10.0, "usl": 50.0},
-        "liner_release":     {"reps": 10, "target": 15,   "sigma_between": 3.5,  "sigma_within": 1.2,  "lsl": 5.0, "usl": 20.0},
+    "Grade B": {
+        "viscosity":          {"reps": 5,  "target": 1.20, "sigma_between": 0.18, "sigma_within": 0.06, "lsl": 0.6, "usl": 1.5},
+        "density":            {"reps": 15, "target": 1800, "sigma_between": 250,  "sigma_within": 60,   "lsl": 1000.0, "usl": float("nan")},
+        "hardness":           {"reps": 8,  "target": 35,   "sigma_between": 9,    "sigma_within": 3.5,  "lsl": 10.0, "usl": 50.0},
+        "elasticity":         {"reps": 10, "target": 15,   "sigma_between": 3.5,  "sigma_within": 1.2,  "lsl": 5.0, "usl": 20.0},
     },
 }
 
 N_BATCHES = 30
-OUTPUT = Path(__file__).parent / "coating_batches.csv"
+OUTPUT = Path(__file__).parent / "batch_data.csv"
 
 
 def _rounder_for_param(param: str) -> int:
     rounding = {
-        "adhesion": 3,
-        "cohesion": 0,
-        "rolling_ball_tack": 1,
-        "liner_release": 2,
+        "viscosity": 3,
+        "density": 0,
+        "hardness": 1,
+        "elasticity": 2,
     }
     return rounding.get(param, 2)
 
@@ -74,7 +74,7 @@ def main():
     formulas = list(FORMULAS.keys())
     all_rows = []
     for i in range(N_BATCHES):
-        batch_id = f"COAT-{i+1:03d}"
+        batch_id = f"BATCH-{i+1:03d}"
         date = (start + pd.Timedelta(days=i)).strftime("%Y-%m-%d")
         formula = formulas[i // 15]
         all_rows.extend(generate_batch(batch_id, date, formula))

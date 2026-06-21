@@ -6,8 +6,8 @@ def test_valid_rows_pass():
     df = pd.DataFrame({
         "date": ["2025-06-01", "2025-06-01"],
         "batch_id": ["B-001", "B-001"],
-        "formula": ["Coating A", "Coating A"],
-        "parameter": ["adhesion", "cohesion"],
+        "formula": ["Grade A", "Grade A"],
+        "parameter": ["viscosity", "density"],
         "rep1": [1.05, 1500.0],
         "rep2": [1.10, 1520.0],
         "rep3": [1.02, 1490.0],
@@ -22,8 +22,8 @@ def test_negative_rep_values_fail():
     df = pd.DataFrame({
         "date": ["2025-06-01"],
         "batch_id": ["B-001"],
-        "formula": ["Coating A"],
-        "parameter": ["adhesion"],
+        "formula": ["Grade A"],
+        "parameter": ["viscosity"],
         "rep1": [1.05],
         "rep2": [-0.5],  # negative — reject
         "rep3": [1.02],
@@ -39,8 +39,8 @@ def test_all_nan_reps_fail():
     df = pd.DataFrame({
         "date": ["2025-06-01"],
         "batch_id": ["B-001"],
-        "formula": ["Coating A"],
-        "parameter": ["adhesion"],
+        "formula": ["Grade A"],
+        "parameter": ["viscosity"],
         "rep1": [float("nan")],
         "rep2": [float("nan")],
         "rep3": [float("nan")],
@@ -56,8 +56,8 @@ def test_bad_date_format_fails():
     df = pd.DataFrame({
         "date": ["not-a-date"],
         "batch_id": ["B-001"],
-        "formula": ["Coating A"],
-        "parameter": ["adhesion"],
+        "formula": ["Grade A"],
+        "parameter": ["viscosity"],
         "rep1": [1.05],
         "rep2": [1.10],
         "rep3": [1.02],
@@ -72,8 +72,8 @@ def test_negative_spec_fails():
     df = pd.DataFrame({
         "date": ["2025-06-01"],
         "batch_id": ["B-001"],
-        "formula": ["Coating A"],
-        "parameter": ["adhesion"],
+        "formula": ["Grade A"],
+        "parameter": ["viscosity"],
         "rep1": [1.05],
         "rep2": [1.10],
         "rep3": [1.02],
@@ -90,8 +90,8 @@ def test_non_numeric_rep_is_flagged():
     df = pd.DataFrame({
         "date": ["2025-06-01"],
         "batch_id": ["B-001"],
-        "formula": ["Coating A"],
-        "parameter": ["adhesion"],
+        "formula": ["Grade A"],
+        "parameter": ["viscosity"],
         "rep1": [1.05],
         "rep2": ["abc"],  # non-numeric
         "rep3": [1.02],
@@ -107,8 +107,8 @@ def test_non_numeric_spec_is_flagged():
     df = pd.DataFrame({
         "date": ["2025-06-01"],
         "batch_id": ["B-001"],
-        "formula": ["Coating A"],
-        "parameter": ["adhesion"],
+        "formula": ["Grade A"],
+        "parameter": ["viscosity"],
         "rep1": [1.05],
         "rep2": [1.10],
         "rep3": [1.02],

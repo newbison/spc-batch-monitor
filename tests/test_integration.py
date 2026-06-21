@@ -10,7 +10,7 @@ from spc_engine.capability import compute_capability
 
 
 def test_full_pipeline_n10():
-    """Full SPC pipeline with n=10 replicates (coating process)."""
+    """Full SPC pipeline with n=10 replicates (manufacturing process)."""
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = Path(tmpdir) / "test.db"
         repo = SqliteRepository(db_path, auto_migrate=False)
@@ -20,19 +20,19 @@ def test_full_pipeline_n10():
             date = f"2025-{(i // 28) + 1:02d}-{(i % 28) + 1:02d}"
             measurements = {}
             for param, (target, lsl, usl, sigma_between, sigma_within) in [
-                ("adhesion", (8.5, 5.0, 12.0, 1.0, 0.3)),
-                ("cohesion", (5.0, 2.0, 8.0, 0.6, 0.2)),
+                ("viscosity", (8.5, 5.0, 12.0, 1.0, 0.3)),
+                ("density", (5.0, 2.0, 8.0, 0.6, 0.2)),
             ]:
                 batch_mean = np.random.normal(target, sigma_between)
                 reps = [round(np.random.normal(batch_mean, sigma_within), 2)
                         for _ in range(10)]
                 measurements[param] = {"reps": reps, "lower_spec": lsl, "upper_spec": usl}
-            repo.append_batch(f"B-{i:03d}", date, "Coating A", measurements)
+            repo.append_batch(f"B-{i:03d}", date, "Grade A", measurements)
 
         df = repo.load_all()
         assert len(df) == 40  # 20 batches × 2 params
 
-        adh_df = repo.get_for_parameter("adhesion")
+        adh_df = repo.get_for_parameter("viscosity")
         limits = compute_xbar_r(adh_df)
         assert len(limits["xbar"]) == 20
         assert limits["UCLx"] > limits["CLx"] > limits["LCLx"]
@@ -56,19 +56,19 @@ def test_sqlite_full_pipeline():
             date_str = f"2025-{(i // 28) + 1:02d}-{(i % 28) + 1:02d}"
             measurements = {}
             for param, (target, lsl, usl, sigma_between, sigma_within) in [
-                ("adhesion", (1.05, 0.6, 1.5, 0.15, 0.05)),
+                ("viscosity", (1.05, 0.6, 1.5, 0.15, 0.05)),
             ]:
                 batch_mean = np.random.normal(target, sigma_between)
                 reps = [round(np.random.normal(batch_mean, sigma_within), 3)
                         for _ in range(5)]
                 measurements[param] = {"reps": reps, "lower_spec": lsl, "upper_spec": usl}
-            repo.append_batch(f"B-{i:03d}", date_str, "Coating A", measurements)
+            repo.append_batch(f"B-{i:03d}", date_str, "Grade A", measurements)
 
         df = repo.load_all()
         assert len(df) == 10  # 10 batches x 1 param
 
         # SPC engine should work with the loaded data
-        adh_df = repo.get_for_parameter("adhesion")
+        adh_df = repo.get_for_parameter("viscosity")
         limits = compute_xbar_r(adh_df, n=5)
         assert len(limits["xbar"]) == 10
         assert limits["UCLx"] > limits["CLx"] > limits["LCLx"]
@@ -80,6 +80,6 @@ def test_sqlite_full_pipeline():
         assert cap["Ppk"] > 0
 
         # Dedup test: append same batch again
-        repo.append_batch("B-001", date_str, "Coating A", measurements)
+        repo.append_batch("B-001", date_str, "Grade A", measurements)
         df2 = repo.load_all()
         assert len(df2) == 10  # still 10, no duplicate

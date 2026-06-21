@@ -45,7 +45,7 @@ def render_data_manager(repo: DataRepository):
     params = sorted(df_all["parameter"].unique().tolist())
     selected_param = f4.selectbox("Parameter", ["All"] + params, key="dm_param")
 
-    search = st.text_input("Search batch_id", placeholder="e.g. COAT-001")
+    search = st.text_input("Search batch_id", placeholder="e.g. BATCH-001")
 
     # --- Apply filters ---
     df_filtered = df_all[

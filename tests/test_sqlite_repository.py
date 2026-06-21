@@ -20,9 +20,9 @@ def test_append_and_load():
         db_path = Path(tmpdir) / "test.db"
         repo = SqliteRepository(db_path, auto_migrate=False)
 
-        repo.append_batch("B-001", "2025-06-01", "Coating A", {
-            "adhesion": {"reps": [1.05, 1.10, 1.02], "lower_spec": 0.6, "upper_spec": 1.5},
-            "cohesion": {"reps": [1500, 1520, 1490], "lower_spec": 1000.0, "upper_spec": float("nan")},
+        repo.append_batch("B-001", "2025-06-01", "Grade A", {
+            "viscosity": {"reps": [1.05, 1.10, 1.02], "lower_spec": 0.6, "upper_spec": 1.5},
+            "density": {"reps": [1500, 1520, 1490], "lower_spec": 1000.0, "upper_spec": float("nan")},
         })
 
         df = repo.load_all()
@@ -35,12 +35,12 @@ def test_get_for_parameter():
         db_path = Path(tmpdir) / "test.db"
         repo = SqliteRepository(db_path, auto_migrate=False)
 
-        repo.append_batch("B-001", "2025-06-01", "Coating A", {
-            "adhesion": {"reps": [1.05, 1.10, 1.02], "lower_spec": 0.6, "upper_spec": 1.5},
-            "cohesion": {"reps": [1500, 1520, 1490], "lower_spec": 1000.0, "upper_spec": float("nan")},
+        repo.append_batch("B-001", "2025-06-01", "Grade A", {
+            "viscosity": {"reps": [1.05, 1.10, 1.02], "lower_spec": 0.6, "upper_spec": 1.5},
+            "density": {"reps": [1500, 1520, 1490], "lower_spec": 1000.0, "upper_spec": float("nan")},
         })
 
-        adh = repo.get_for_parameter("adhesion")
+        adh = repo.get_for_parameter("viscosity")
         assert len(adh) == 1
         assert "rep1" in adh.columns
 
@@ -50,15 +50,15 @@ def test_get_formulas():
         db_path = Path(tmpdir) / "test.db"
         repo = SqliteRepository(db_path, auto_migrate=False)
 
-        repo.append_batch("B-001", "2025-06-01", "Coating A", {
-            "adhesion": {"reps": [1.0], "lower_spec": float("nan"), "upper_spec": float("nan")},
+        repo.append_batch("B-001", "2025-06-01", "Grade A", {
+            "viscosity": {"reps": [1.0], "lower_spec": float("nan"), "upper_spec": float("nan")},
         })
-        repo.append_batch("B-002", "2025-06-02", "Coating B", {
-            "adhesion": {"reps": [1.0], "lower_spec": float("nan"), "upper_spec": float("nan")},
+        repo.append_batch("B-002", "2025-06-02", "Grade B", {
+            "viscosity": {"reps": [1.0], "lower_spec": float("nan"), "upper_spec": float("nan")},
         })
 
         formulas = repo.get_formulas()
-        assert sorted(formulas) == ["Coating A", "Coating B"]
+        assert sorted(formulas) == ["Grade A", "Grade B"]
 
 
 def test_get_parameters():
@@ -66,13 +66,13 @@ def test_get_parameters():
         db_path = Path(tmpdir) / "test.db"
         repo = SqliteRepository(db_path, auto_migrate=False)
 
-        repo.append_batch("B-001", "2025-06-01", "Coating A", {
-            "adhesion": {"reps": [1.0], "lower_spec": float("nan"), "upper_spec": float("nan")},
-            "cohesion": {"reps": [1500], "lower_spec": float("nan"), "upper_spec": float("nan")},
+        repo.append_batch("B-001", "2025-06-01", "Grade A", {
+            "viscosity": {"reps": [1.0], "lower_spec": float("nan"), "upper_spec": float("nan")},
+            "density": {"reps": [1500], "lower_spec": float("nan"), "upper_spec": float("nan")},
         })
 
         params = repo.get_parameters()
-        assert sorted(params) == ["adhesion", "cohesion"]
+        assert sorted(params) == ["density", "viscosity"]
 
 
 def test_append_batch_dedup():
@@ -81,17 +81,17 @@ def test_append_batch_dedup():
         db_path = Path(tmpdir) / "test.db"
         repo = SqliteRepository(db_path, auto_migrate=False)
 
-        repo.append_batch("B-001", "2025-06-01", "Coating A", {
-            "adhesion": {"reps": [1.05, 1.10, 1.02], "lower_spec": 0.6, "upper_spec": 1.5},
+        repo.append_batch("B-001", "2025-06-01", "Grade A", {
+            "viscosity": {"reps": [1.05, 1.10, 1.02], "lower_spec": 0.6, "upper_spec": 1.5},
         })
 
         # Same batch+formula+param — should be ignored
-        repo.append_batch("B-001", "2025-06-01", "Coating A", {
-            "adhesion": {"reps": [9.99, 9.99, 9.99], "lower_spec": 0.6, "upper_spec": 1.5},
+        repo.append_batch("B-001", "2025-06-01", "Grade A", {
+            "viscosity": {"reps": [9.99, 9.99, 9.99], "lower_spec": 0.6, "upper_spec": 1.5},
         })
 
         df = repo.load_all()
-        match = df[(df["batch_id"] == "B-001") & (df["parameter"] == "adhesion")]
+        match = df[(df["batch_id"] == "B-001") & (df["parameter"] == "viscosity")]
         assert len(match) == 1  # not 2
         # Original values preserved
         assert abs(float(match["rep1"].iloc[0]) - 1.05) < 0.01
@@ -103,15 +103,15 @@ def test_upload_csv_dedup():
         db_path = Path(tmpdir) / "test.db"
         repo = SqliteRepository(db_path, auto_migrate=False)
 
-        repo.append_batch("B-001", "2025-06-01", "Coating A", {
-            "adhesion": {"reps": [1.0], "lower_spec": float("nan"), "upper_spec": float("nan")},
+        repo.append_batch("B-001", "2025-06-01", "Grade A", {
+            "viscosity": {"reps": [1.0], "lower_spec": float("nan"), "upper_spec": float("nan")},
         })
 
         new_df = pd.DataFrame({
             "date": ["2025-06-01", "2025-06-02"],
             "batch_id": ["B-001", "B-002"],
-            "formula": ["Coating A", "Coating A"],
-            "parameter": ["adhesion", "adhesion"],
+            "formula": ["Grade A", "Grade A"],
+            "parameter": ["viscosity", "viscosity"],
             "rep1": [9.99, 1.1],
             "lower_spec": [float("nan"), float("nan")],
             "upper_spec": [float("nan"), float("nan")],
@@ -134,8 +134,8 @@ def test_upload_csv_rejects_invalid():
         bad_df = pd.DataFrame({
             "date": ["2025-06-01"],
             "batch_id": ["B-001"],
-            "formula": ["Coating A"],
-            "parameter": ["adhesion"],
+            "formula": ["Grade A"],
+            "parameter": ["viscosity"],
             "rep1": [-1.0],  # negative — reject
             "lower_spec": [float("nan")],
             "upper_spec": [float("nan")],
@@ -153,8 +153,8 @@ def test_auto_migration_from_csv():
         df_in = pd.DataFrame({
             "date": ["2025-06-01", "2025-06-01"],
             "batch_id": ["B-001", "B-001"],
-            "formula": ["Coating A", "Coating A"],
-            "parameter": ["adhesion", "cohesion"],
+            "formula": ["Grade A", "Grade A"],
+            "parameter": ["viscosity", "density"],
             "rep1": [1.05, 1500.0],
             "rep2": [1.10, 1520.0],
             "rep3": [1.02, 1490.0],
@@ -172,7 +172,7 @@ def test_auto_migration_from_csv():
             repo = SqliteRepository(db_path)  # auto_migrate defaults to True
             df = repo.load_all()
             assert len(df) == 2
-            assert set(df["parameter"].tolist()) == {"adhesion", "cohesion"}
+            assert set(df["parameter"].tolist()) == {"viscosity", "density"}
         finally:
             config.DATA_FILE = original_data_file
 
@@ -184,8 +184,8 @@ def test_auto_migration_skips_if_db_has_data():
         df_in = pd.DataFrame({
             "date": ["2025-06-01"],
             "batch_id": ["B-001"],
-            "formula": ["Coating A"],
-            "parameter": ["adhesion"],
+            "formula": ["Grade A"],
+            "parameter": ["viscosity"],
             "rep1": [1.05],
             "lower_spec": [float("nan")],
             "upper_spec": [float("nan")],
@@ -213,14 +213,14 @@ def test_get_batch():
         db_path = Path(tmpdir) / "test.db"
         repo = SqliteRepository(db_path, auto_migrate=False)
 
-        repo.append_batch("B-001", "2025-06-01", "Coating A", {
-            "adhesion": {"reps": [1.05, 1.10, 1.02], "lower_spec": 0.6, "upper_spec": 1.5},
-            "cohesion": {"reps": [1500, 1520, 1490], "lower_spec": 1000.0, "upper_spec": float("nan")},
+        repo.append_batch("B-001", "2025-06-01", "Grade A", {
+            "viscosity": {"reps": [1.05, 1.10, 1.02], "lower_spec": 0.6, "upper_spec": 1.5},
+            "density": {"reps": [1500, 1520, 1490], "lower_spec": 1000.0, "upper_spec": float("nan")},
         })
 
         batch_df = repo.get_batch("B-001")
         assert len(batch_df) == 2  # 2 parameters
-        assert set(batch_df["parameter"].tolist()) == {"adhesion", "cohesion"}
+        assert set(batch_df["parameter"].tolist()) == {"viscosity", "density"}
 
 
 def test_get_batch_not_found():
@@ -236,17 +236,17 @@ def test_update_batch():
         db_path = Path(tmpdir) / "test.db"
         repo = SqliteRepository(db_path, auto_migrate=False)
 
-        repo.append_batch("B-001", "2025-06-01", "Coating A", {
-            "adhesion": {"reps": [1.05, 1.10, 1.02], "lower_spec": 0.6, "upper_spec": 1.5},
+        repo.append_batch("B-001", "2025-06-01", "Grade A", {
+            "viscosity": {"reps": [1.05, 1.10, 1.02], "lower_spec": 0.6, "upper_spec": 1.5},
         })
 
-        # Update adhesion values
-        ok = repo.update_batch("B-001", "Coating A", "adhesion", {
+        # Update viscosity values
+        ok = repo.update_batch("B-001", "Grade A", "viscosity", {
             "reps": [2.0, 2.1, 2.2], "lower_spec": 0.6, "upper_spec": 1.5,
         })
         assert ok is True
 
-        df = repo.get_for_parameter("adhesion")
+        df = repo.get_for_parameter("viscosity")
         assert abs(float(df["rep1"].iloc[0]) - 2.0) < 0.01
 
 
@@ -254,7 +254,7 @@ def test_update_batch_not_found():
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
         db_path = Path(tmpdir) / "test.db"
         repo = SqliteRepository(db_path, auto_migrate=False)
-        ok = repo.update_batch("NOPE", "Coating A", "adhesion", {
+        ok = repo.update_batch("NOPE", "Grade A", "viscosity", {
             "reps": [1.0], "lower_spec": float("nan"), "upper_spec": float("nan"),
         })
         assert ok is False
@@ -265,12 +265,12 @@ def test_update_batch_rejects_invalid():
         db_path = Path(tmpdir) / "test.db"
         repo = SqliteRepository(db_path, auto_migrate=False)
 
-        repo.append_batch("B-001", "2025-06-01", "Coating A", {
-            "adhesion": {"reps": [1.05, 1.10, 1.02], "lower_spec": 0.6, "upper_spec": 1.5},
+        repo.append_batch("B-001", "2025-06-01", "Grade A", {
+            "viscosity": {"reps": [1.05, 1.10, 1.02], "lower_spec": 0.6, "upper_spec": 1.5},
         })
 
         with pytest.raises(ValueError, match="Validation failed"):
-            repo.update_batch("B-001", "Coating A", "adhesion", {
+            repo.update_batch("B-001", "Grade A", "viscosity", {
                 "reps": [-1.0], "lower_spec": 0.6, "upper_spec": 1.5,
             })
 
@@ -280,16 +280,16 @@ def test_delete_batch():
         db_path = Path(tmpdir) / "test.db"
         repo = SqliteRepository(db_path, auto_migrate=False)
 
-        repo.append_batch("B-001", "2025-06-01", "Coating A", {
-            "adhesion": {"reps": [1.0], "lower_spec": float("nan"), "upper_spec": float("nan")},
-            "cohesion": {"reps": [1500], "lower_spec": float("nan"), "upper_spec": float("nan")},
+        repo.append_batch("B-001", "2025-06-01", "Grade A", {
+            "viscosity": {"reps": [1.0], "lower_spec": float("nan"), "upper_spec": float("nan")},
+            "density": {"reps": [1500], "lower_spec": float("nan"), "upper_spec": float("nan")},
         })
 
-        deleted = repo.delete_batch("B-001", "Coating A", "cohesion")
+        deleted = repo.delete_batch("B-001", "Grade A", "density")
         assert deleted is True
 
         df = repo.load_all()
-        assert len(df) == 1  # only adhesion left
+        assert len(df) == 1  # only viscosity left
 
 
 def test_delete_all_for_batch():
@@ -297,9 +297,9 @@ def test_delete_all_for_batch():
         db_path = Path(tmpdir) / "test.db"
         repo = SqliteRepository(db_path, auto_migrate=False)
 
-        repo.append_batch("B-001", "2025-06-01", "Coating A", {
-            "adhesion": {"reps": [1.0], "lower_spec": float("nan"), "upper_spec": float("nan")},
-            "cohesion": {"reps": [1500], "lower_spec": float("nan"), "upper_spec": float("nan")},
+        repo.append_batch("B-001", "2025-06-01", "Grade A", {
+            "viscosity": {"reps": [1.0], "lower_spec": float("nan"), "upper_spec": float("nan")},
+            "density": {"reps": [1500], "lower_spec": float("nan"), "upper_spec": float("nan")},
         })
 
         count = repo.delete_all_for_batch("B-001")

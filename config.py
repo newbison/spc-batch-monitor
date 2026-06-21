@@ -2,7 +2,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_ROOT / "data"
-DATA_FILE = DATA_DIR / "coating_batches.csv"
+DATA_FILE = DATA_DIR / "batch_data.csv"
 DB_FILE = DATA_DIR / "spc.db"
 
 # SPC constants for X-bar & R charts: A2, D3, D4 by subgroup size n

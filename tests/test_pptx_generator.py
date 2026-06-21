@@ -53,8 +53,8 @@ def test_build_report_returns_bytesio():
         "action_items": "",
     }
     metadata = {
-        "formula": "Coating A",
-        "parameter": "adhesion",
+        "formula": "Grade A",
+        "parameter": "viscosity",
         "date_range": ("2025-01-01", "2025-03-15"),
         "generated_at": "2025-03-20 14:30",
         "baseline_n": 20,
@@ -78,8 +78,8 @@ def test_build_report_returns_bytesio():
     slide1_text = " ".join(
         shape.text for shape in prs.slides[0].shapes if shape.has_text_frame
     )
-    assert "Coating A" in slide1_text
-    assert "adhesion" in slide1_text
+    assert "Grade A" in slide1_text
+    assert "viscosity" in slide1_text
 
     # Slide 2: Summary — should contain the verdict
     slide2_text = " ".join(
@@ -117,7 +117,7 @@ def test_build_report_with_ooc_events():
         "action_items": "Investigate root cause of out-of-control signals.",
     }
     metadata = {
-        "formula": "Coating A", "parameter": "adhesion",
+        "formula": "Grade A", "parameter": "viscosity",
         "date_range": ("2025-03-01", "2025-03-28"),
         "generated_at": "2025-03-20", "baseline_n": 10,
     }
