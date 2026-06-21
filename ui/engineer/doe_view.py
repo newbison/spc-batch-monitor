@@ -20,7 +20,7 @@ from doe.designs import (
     decode_to_actual,
     get_fractional_run_count,
 )
-from doe.analysis import fit_linear, fit_rsm, _is_center_row, anova_table
+from doe.analysis import fit_linear, fit_rsm, _is_center_row, anova_table, predict_from_model
 from doe.optimization import optimize as doe_optimize
 from doe.residuals import build_residual_plots
 from doe.profiler import compute_profile, compute_overall_desirability
@@ -258,17 +258,41 @@ def _render_analyze_tab(doe_repo: DoeRepository):
         if uploaded:
             try:
                 uploaded_df = pd.read_csv(uploaded)
+                # Validate required columns
+                missing_cols = [rname for rname in response_names if rname not in uploaded_df.columns]
+                if missing_cols:
+                    st.error(f"Missing response columns: {', '.join(missing_cols)}")
+                    return
+
+                # Validate every cell
+                errors = []
                 results = []
-                for _, row in uploaded_df.iterrows():
-                    run_result = {"run": int(row["run"])}
+                for idx, row in uploaded_df.iterrows():
+                    run_num = int(row["run"])
+                    run_result = {"run": run_num}
                     for rname in response_names:
-                        if rname in uploaded_df.columns:
-                            run_result[rname] = float(row[rname])
+                        val = row[rname]
+                        if pd.isna(val):
+                            errors.append(f"Run {run_num}: '{rname}' is empty")
+                        else:
+                            try:
+                                run_result[rname] = float(val)
+                            except (ValueError, TypeError):
+                                errors.append(f"Run {run_num}: '{rname}' = '{val}' is not a number")
                     results.append(run_result)
+
+                if errors:
+                    st.error(f"Found {len(errors)} issue(s) in the uploaded data:")
+                    for err in errors[:10]:
+                        st.write(f"- {err}")
+                    if len(errors) > 10:
+                        st.write(f"- ... and {len(errors) - 10} more")
+                    return
+
                 session["results_json"] = results
                 if db_id:
                     doe_repo.update(db_id, {"results": results, "status": "running"})
-                st.success(f"Loaded {len(results)} runs with {len(response_names)} responses")
+                st.success(f"Loaded {len(results)} runs with {len(response_names)} responses — all valid ✓")
                 st.rerun()
             except Exception as e:
                 st.error(f"Error reading CSV: {e}")
@@ -369,8 +393,15 @@ def _render_analyze_tab(doe_repo: DoeRepository):
                 y=[c["term"] for c in coefs],
                 orientation="h",
                 marker_color=["#C4523E" if c["significant"] else "#4A90D9" for c in coefs],
+                text=[f"{abs(c['estimate']):.3f}" for c in coefs],
+                textposition="outside",
             ))
-            pareto_fig.update_layout(title=f"Pareto of Effects - {rname}", height=300)
+            pareto_fig.update_layout(
+                title=f"Pareto of Effects — {rname}",
+                height=max(300, len(coefs) * 40 + 100),
+                margin=dict(l=120),
+                showlegend=False,
+            )
             st.plotly_chart(pareto_fig, use_container_width=True)
 
             # Main effects
@@ -384,6 +415,60 @@ def _render_analyze_tab(doe_repo: DoeRepository):
                                                 mode="lines+markers"), row=1, col=i+1)
                 fig_me.update_layout(height=300, showlegend=False)
                 st.plotly_chart(fig_me, use_container_width=True)
+
+            # Contour + surface for RSM models with 2+ continuous factors
+            cont_factors_rsm = [f for f in factors if f["type"] == "continuous"]
+            is_rsm = any(c["term"].endswith("^2") for c in model.get("coefficients", []))
+            if is_rsm and len(cont_factors_rsm) >= 2:
+                x_name = cont_factors_rsm[0]["name"]
+                y_name = cont_factors_rsm[1]["name"]
+                st.markdown(f"*Response surface: {x_name} × {y_name}*")
+
+                c_col1, c_col2 = st.columns(2)
+                with c_col1:
+                    # Contour plot
+                    grid = np.linspace(-1, 1, 50)
+                    Z = np.zeros((50, 50))
+                    for gi, xv in enumerate(grid):
+                        for gj, yv in enumerate(grid):
+                            point = {f["name"]: 0.0 for f in factors}
+                            point[x_name] = xv
+                            point[y_name] = yv
+                            Z[gi, gj] = predict_from_model(model, factors, point)
+                    contour_fig = go.Figure(go.Contour(
+                        z=Z, x=grid, y=grid,
+                        colorscale="RdYlBu_r",
+                        contours=dict(showlabels=True, labelfont=dict(size=10)),
+                    ))
+                    contour_fig.update_layout(
+                        title=f"Contour: {rname}",
+                        xaxis_title=f"{x_name} (coded)",
+                        yaxis_title=f"{y_name} (coded)",
+                        height=400,
+                    )
+                    st.plotly_chart(contour_fig, use_container_width=True)
+                with c_col2:
+                    # 3D surface plot
+                    grid_3d = np.linspace(-1, 1, 30)
+                    Z_3d = np.zeros((30, 30))
+                    for gi, xv in enumerate(grid_3d):
+                        for gj, yv in enumerate(grid_3d):
+                            point = {f["name"]: 0.0 for f in factors}
+                            point[x_name] = xv
+                            point[y_name] = yv
+                            Z_3d[gi, gj] = predict_from_model(model, factors, point)
+                    surface_fig = go.Figure(data=[go.Surface(
+                        z=Z_3d, x=grid_3d, y=grid_3d, colorscale="RdYlBu_r"
+                    )])
+                    surface_fig.update_layout(
+                        title=f"Surface: {rname}",
+                        scene=dict(
+                            xaxis_title=x_name, yaxis_title=y_name,
+                            zaxis_title=rname,
+                        ),
+                        height=400,
+                    )
+                    st.plotly_chart(surface_fig, use_container_width=True)
 
     # -- Section 6: Prediction Profiler --
     with st.expander("PREDICTION PROFILER", expanded=True):
@@ -614,6 +699,7 @@ def _load_session(doe_repo: DoeRepository, sid: int):
         s = doe_repo.load(sid)
         # Backward compat: old sessions used 'model' column; new sessions use 'analysis'
         analysis_data = s.get("analysis") or s.get("model")
+        optimum_data = s.get("optimum")
         st.session_state.doe_session = {
             "name": s["name"],
             "entry_type": s["entry_type"],
@@ -623,12 +709,36 @@ def _load_session(doe_repo: DoeRepository, sid: int):
             "design_json": s.get("design"),
             "results_json": s.get("results"),
             "analysis_json": analysis_data,
-            "optimum_json": s.get("optimum"),
+            "optimum_json": optimum_data,
             "db_id": sid,
         }
         st.session_state.doe_session_id = sid
         st.session_state.doe_analysis_results = analysis_data
-        st.session_state.doe_active_tab = "analyze" if s.get("results") else "design"
+
+        # Restore profiler slider positions from optimum if available
+        if optimum_data and optimum_data.get("optimal_settings"):
+            factors = s.get("factors", [])
+            positions = {}
+            for f in factors:
+                if f.get("type") != "continuous":
+                    continue
+                opt_val = optimum_data["optimal_settings"].get(f["name"])
+                if opt_val is not None and f.get("low") != f.get("high"):
+                    coded = (2 * (opt_val - f["low"]) / (f["high"] - f["low"])) - 1
+                    positions[f["name"]] = float(max(-1.0, min(1.0, coded)))
+                else:
+                    positions[f["name"]] = 0.0
+            if positions:
+                st.session_state.doe_profiler_positions = positions
+
+        # Route to appropriate tab based on session status
+        status = s.get("status", "defined")
+        if status in ("analyzed", "optimized") and s.get("results"):
+            st.session_state.doe_active_tab = "analyze"
+        elif status == "designed" or s.get("design"):
+            st.session_state.doe_active_tab = "design"
+        else:
+            st.session_state.doe_active_tab = "design"
         st.rerun()
     except KeyError:
         st.error(f"Session {sid} not found.")
