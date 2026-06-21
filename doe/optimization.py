@@ -187,7 +187,11 @@ def optimize(
             optimal_settings[f["name"]] = round(actual, 2)
         else:
             # Categorical: round to nearest endpoint
-            optimal_settings[f["name"]] = f["low"] if coded_val < 0 else f["high"]
+            levels = f.get("levels")
+            if levels and len(levels) >= 2:
+                optimal_settings[f["name"]] = levels[0] if coded_val < 0 else levels[-1]
+            else:
+                optimal_settings[f["name"]] = f["low"] if coded_val < 0 else f["high"]
 
     # Predict responses at optimum with proper prediction intervals
     predicted_responses = {}

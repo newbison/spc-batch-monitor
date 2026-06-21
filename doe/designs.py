@@ -173,8 +173,7 @@ def decode_to_actual(coded: pd.DataFrame, factors: list[dict]) -> pd.DataFrame:
     decoded = coded.copy()
     for f in factors:
         name = f["name"]
-        low, high = f["low"], f["high"]
-        decoded[name] = decoded[name].apply(lambda x: _decode_value(x, low, high, f["type"]))
+        decoded[name] = decoded[name].apply(lambda x: _decode_value(x, f))
     return decoded
 
 
@@ -214,17 +213,40 @@ def _build_design_df(coded: np.ndarray, factors: list[dict]) -> pd.DataFrame:
     return df
 
 
-def _decode_value(coded_val: float, low, high, factor_type: str):
-    """Decode a single coded value to actual."""
+def _decode_value(coded_val: float, factor: dict):
+    """Decode a single coded value to actual.
+
+    For categorical factors with ``levels``, picks the level by sign
+    (-1 → first, +1 → last, 0 → combined label).
+    Falls back to ``low``/``high`` for backward compat.
+    """
+    if factor.get("type") == "categorical":
+        levels = factor.get("levels")
+        if levels and len(levels) >= 2:
+            if coded_val <= -0.5:
+                return levels[0]
+            elif coded_val >= 0.5:
+                return levels[-1]
+            else:  # center point
+                return "/".join(levels)
+        # Backward compat: old low/high style
+        low = factor.get("low", "?")
+        high = factor.get("high", "?")
+        if coded_val <= -0.5:
+            return low
+        elif coded_val >= 0.5:
+            return high
+        else:
+            return f"{low}/{high}"
+
+    # Continuous
+    low, high = factor["low"], factor["high"]
     if coded_val == -1:
         return low
     elif coded_val == 1:
         return high
     else:  # 0 (center point)
-        if factor_type == "continuous":
-            return (low + high) / 2
-        else:
-            return f"{low}/{high}"
+        return (low + high) / 2
 
 
 def _get_fractional_generators(k: int, resolution: int) -> str:

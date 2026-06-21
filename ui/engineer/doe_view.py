@@ -611,34 +611,84 @@ def _render_landing(doe_repo: DoeRepository):
 
 
 def _render_setup_section(session: dict):
-    """Factor and response definition (inline editors)."""
-    # Factors
+    """Factor and response definition (inline editors).
+
+    Continuous factors: optional low/high bounds (any numeric value).
+    Categorical factors: named levels (e.g. A, B, C...) via text inputs.
+    """
+    # ---- Factors ----
     st.markdown("**Factors**")
     if "doe_factors_list" not in st.session_state:
-        st.session_state.doe_factors_list = session.get("factors_json", []) or [
+        existing = session.get("factors_json", [])
+        st.session_state.doe_factors_list = existing if existing else [
             {"name": "", "type": "continuous", "low": 0.0, "high": 100.0}
         ]
 
     for i, row in enumerate(st.session_state.doe_factors_list):
-        c1, c2, c3, c4, c5 = st.columns([3, 2, 2, 2, 1])
-        with c1:
-            row["name"] = st.text_input("Name", row.get("name", ""), key=f"fac_n_{i}",
-                                        label_visibility="collapsed", placeholder=f"Factor {i+1}")
-        with c2:
-            row["type"] = st.selectbox("Type", ["continuous", "categorical"],
-                                       index=0 if row.get("type") == "continuous" else 1,
-                                       key=f"fac_t_{i}", label_visibility="collapsed")
-        with c3:
-            row["low"] = st.number_input("Low", float(row.get("low", 0)), key=f"fac_l_{i}",
-                                         label_visibility="collapsed", step=0.01, format="%.4f")
-        with c4:
-            row["high"] = st.number_input("High", float(row.get("high", 100)), key=f"fac_h_{i}",
-                                          label_visibility="collapsed", step=0.01, format="%.4f")
-        with c5:
-            if len(st.session_state.doe_factors_list) > 1:
-                if st.button("X", key=f"fac_del_{i}"):
-                    st.session_state.doe_factors_list.pop(i)
-                    st.rerun()
+        is_cat = row.get("type") == "categorical"
+
+        if is_cat:
+            # Categorical: name + type + level labels
+            c_name, c_type, c_del = st.columns([3, 2, 1])
+            with c_name:
+                row["name"] = st.text_input("Name", row.get("name", ""), key=f"fac_n_{i}",
+                                            label_visibility="collapsed", placeholder=f"Factor {i+1}")
+            with c_type:
+                row["type"] = st.selectbox("Type", ["continuous", "categorical"],
+                                           index=1, key=f"fac_t_{i}", label_visibility="collapsed")
+            with c_del:
+                if len(st.session_state.doe_factors_list) > 1:
+                    if st.button("✕", key=f"fac_del_{i}"):
+                        st.session_state.doe_factors_list.pop(i)
+                        st.rerun()
+
+            # Level inputs — one row per level
+            if "levels" not in row or not row["levels"]:
+                row["levels"] = ["A", "B"]
+            for li, lv in enumerate(row["levels"]):
+                lc1, lc2 = st.columns([5, 1])
+                with lc1:
+                    row["levels"][li] = st.text_input(
+                        f"Level {li+1}", lv, key=f"fac_lev_{i}_{li}",
+                        label_visibility="collapsed",
+                        placeholder=f"Level {li+1} (e.g. {'ABCD'[li]})",
+                    )
+                with lc2:
+                    if len(row["levels"]) > 2:
+                        if st.button("✕", key=f"fac_levdel_{i}_{li}"):
+                            row["levels"].pop(li)
+                            st.rerun()
+            # Add level button
+            if st.button(f"+ Add level", key=f"fac_addlev_{i}"):
+                row["levels"].append("")
+                st.rerun()
+            st.caption("")
+        else:
+            # Continuous: name + type + optional low/high
+            c_name, c_type, c_low, c_high, c_del = st.columns([3, 2, 2, 2, 1])
+            with c_name:
+                row["name"] = st.text_input("Name", row.get("name", ""), key=f"fac_n_{i}",
+                                            label_visibility="collapsed", placeholder=f"Factor {i+1}")
+            with c_type:
+                row["type"] = st.selectbox("Type", ["continuous", "categorical"],
+                                           index=0, key=f"fac_t_{i}", label_visibility="collapsed")
+            with c_low:
+                low_val = row.get("low")
+                row["low"] = st.number_input("Lower bound", value=float(low_val) if low_val is not None else 0.0,
+                                             key=f"fac_l_{i}", label_visibility="collapsed",
+                                             step=0.01, format="%.4f",
+                                             help="Lower bound (optional — any numeric value)")
+            with c_high:
+                high_val = row.get("high")
+                row["high"] = st.number_input("Upper bound", value=float(high_val) if high_val is not None else 100.0,
+                                              key=f"fac_h_{i}", label_visibility="collapsed",
+                                              step=0.01, format="%.4f",
+                                              help="Upper bound (optional — any numeric value)")
+            with c_del:
+                if len(st.session_state.doe_factors_list) > 1:
+                    if st.button("✕", key=f"fac_del_{i}"):
+                        st.session_state.doe_factors_list.pop(i)
+                        st.rerun()
 
     if st.button("+ Add Factor", key="doe_add_f"):
         st.session_state.doe_factors_list.append(
@@ -646,33 +696,51 @@ def _render_setup_section(session: dict):
         )
         st.rerun()
 
-    # Responses
+    # ---- Responses ----
     st.markdown("**Responses**")
     if "doe_responses_list" not in st.session_state:
-        st.session_state.doe_responses_list = session.get("responses_json", []) or [
+        existing = session.get("responses_json", [])
+        st.session_state.doe_responses_list = existing if existing else [
             {"name": "", "goal": "maximize", "target": None, "low": 0.0, "high": 100.0}
         ]
 
     for i, row in enumerate(st.session_state.doe_responses_list):
-        c1, c2, c3, c4, c5 = st.columns([3, 1.5, 1.5, 1.5, 1])
+        goal = row.get("goal", "maximize")
+        c1, c2, c3, c4, c5, c6 = st.columns([3, 1.3, 1.3, 1.3, 1.3, 0.8])
         with c1:
             row["name"] = st.text_input("Name", row.get("name", ""), key=f"resp_n_{i}",
                                         label_visibility="collapsed", placeholder=f"Response {i+1}")
         with c2:
             row["goal"] = st.selectbox("Goal", ["maximize", "minimize", "target"],
-                                       index=["maximize","minimize","target"].index(row.get("goal","maximize")),
+                                       index=["maximize","minimize","target"].index(goal) if goal in ["maximize","minimize","target"] else 0,
                                        key=f"resp_g_{i}", label_visibility="collapsed")
         with c3:
-            if row["goal"] in ("maximize", "target"):
-                row["low"] = st.number_input("Low", float(row.get("low", 0)), key=f"resp_l_{i}",
-                                             label_visibility="collapsed", step=0.01, format="%.4f")
+            if goal in ("maximize", "target"):
+                row["low"] = st.number_input("Min acceptable", float(row.get("low", 0)),
+                                             key=f"resp_l_{i}", label_visibility="collapsed",
+                                             step=0.01, format="%.4f",
+                                             help="Minimum acceptable value")
+            else:
+                st.caption("")
         with c4:
-            if row["goal"] in ("minimize", "target"):
-                row["high"] = st.number_input("High", float(row.get("high", 100)), key=f"resp_h_{i}",
-                                              label_visibility="collapsed", step=0.01, format="%.4f")
+            if goal in ("minimize", "target"):
+                row["high"] = st.number_input("Max acceptable", float(row.get("high", 100)),
+                                              key=f"resp_h_{i}", label_visibility="collapsed",
+                                              step=0.01, format="%.4f",
+                                              help="Maximum acceptable value")
+            else:
+                st.caption("")
         with c5:
+            if goal == "target":
+                row["target"] = st.number_input("Target", float(row.get("target") or row.get("low", 0)),
+                                                key=f"resp_t_{i}", label_visibility="collapsed",
+                                                step=0.01, format="%.4f",
+                                                help="Ideal target value")
+            else:
+                st.caption("")
+        with c6:
             if len(st.session_state.doe_responses_list) > 1:
-                if st.button("X", key=f"resp_del_{i}"):
+                if st.button("✕", key=f"resp_del_{i}"):
                     st.session_state.doe_responses_list.pop(i)
                     st.rerun()
 
