@@ -7,24 +7,24 @@ np.random.seed(42)
 
 # Each parameter can have its own replicate count
 PARAM_CONFIG = {
-    "viscosity":          {"reps": 5,  "target": 1.05, "sigma_between": 0.15, "sigma_within": 0.05, "lsl": 0.6, "usl": 1.5},
-    "density":            {"reps": 15, "target": 1500, "sigma_between": 200,  "sigma_within": 50,   "lsl": 1000.0, "usl": float("nan")},
-    "hardness":           {"reps": 8,  "target": 30,   "sigma_between": 8,    "sigma_within": 3,    "lsl": 10.0, "usl": 50.0},
-    "elasticity":         {"reps": 10, "target": 12.5, "sigma_between": 3,    "sigma_within": 1,    "lsl": 5.0, "usl": 20.0},
+    "Metric A":          {"reps": 5,  "target": 1.05, "sigma_between": 0.15, "sigma_within": 0.05, "lsl": 0.6, "usl": 1.5},
+    "Metric B":          {"reps": 15, "target": 1500, "sigma_between": 200,  "sigma_within": 50,   "lsl": 1000.0, "usl": float("nan")},
+    "Metric C":          {"reps": 8,  "target": 30,   "sigma_between": 8,    "sigma_within": 3,    "lsl": 10.0, "usl": 50.0},
+    "Metric D":          {"reps": 10, "target": 12.5, "sigma_between": 3,    "sigma_within": 1,    "lsl": 5.0, "usl": 20.0},
 }
 
 FORMULAS = {
     "Grade A": {
-        "viscosity":          {"reps": 5,  "target": 1.05, "sigma_between": 0.15, "sigma_within": 0.05, "lsl": 0.6, "usl": 1.5},
-        "density":            {"reps": 15, "target": 1500, "sigma_between": 200,  "sigma_within": 50,   "lsl": 1000.0, "usl": float("nan")},
-        "hardness":           {"reps": 8,  "target": 30,   "sigma_between": 8,    "sigma_within": 3,    "lsl": 10.0, "usl": 50.0},
-        "elasticity":         {"reps": 10, "target": 12.5, "sigma_between": 3,    "sigma_within": 1,    "lsl": 5.0, "usl": 20.0},
+        "Metric A":          {"reps": 5,  "target": 1.05, "sigma_between": 0.15, "sigma_within": 0.05, "lsl": 0.6, "usl": 1.5},
+        "Metric B":          {"reps": 15, "target": 1500, "sigma_between": 200,  "sigma_within": 50,   "lsl": 1000.0, "usl": float("nan")},
+        "Metric C":          {"reps": 8,  "target": 30,   "sigma_between": 8,    "sigma_within": 3,    "lsl": 10.0, "usl": 50.0},
+        "Metric D":          {"reps": 10, "target": 12.5, "sigma_between": 3,    "sigma_within": 1,    "lsl": 5.0, "usl": 20.0},
     },
     "Grade B": {
-        "viscosity":          {"reps": 5,  "target": 1.20, "sigma_between": 0.18, "sigma_within": 0.06, "lsl": 0.6, "usl": 1.5},
-        "density":            {"reps": 15, "target": 1800, "sigma_between": 250,  "sigma_within": 60,   "lsl": 1000.0, "usl": float("nan")},
-        "hardness":           {"reps": 8,  "target": 35,   "sigma_between": 9,    "sigma_within": 3.5,  "lsl": 10.0, "usl": 50.0},
-        "elasticity":         {"reps": 10, "target": 15,   "sigma_between": 3.5,  "sigma_within": 1.2,  "lsl": 5.0, "usl": 20.0},
+        "Metric A":          {"reps": 5,  "target": 1.20, "sigma_between": 0.18, "sigma_within": 0.06, "lsl": 0.6, "usl": 1.5},
+        "Metric B":          {"reps": 15, "target": 1800, "sigma_between": 250,  "sigma_within": 60,   "lsl": 1000.0, "usl": float("nan")},
+        "Metric C":          {"reps": 8,  "target": 35,   "sigma_between": 9,    "sigma_within": 3.5,  "lsl": 10.0, "usl": 50.0},
+        "Metric D":          {"reps": 10, "target": 15,   "sigma_between": 3.5,  "sigma_within": 1.2,  "lsl": 5.0, "usl": 20.0},
     },
 }
 
@@ -34,10 +34,10 @@ OUTPUT = Path(__file__).parent / "batch_data.csv"
 
 def _rounder_for_param(param: str) -> int:
     rounding = {
-        "viscosity": 3,
-        "density": 0,
-        "hardness": 1,
-        "elasticity": 2,
+        "Metric A": 3,
+        "Metric B": 0,
+        "Metric C": 1,
+        "Metric D": 2,
     }
     return rounding.get(param, 2)
 

@@ -54,7 +54,7 @@ def test_build_report_returns_bytesio():
     }
     metadata = {
         "formula": "Grade A",
-        "parameter": "viscosity",
+        "parameter": "Metric A",
         "date_range": ("2025-01-01", "2025-03-15"),
         "generated_at": "2025-03-20 14:30",
         "baseline_n": 20,
@@ -79,7 +79,7 @@ def test_build_report_returns_bytesio():
         shape.text for shape in prs.slides[0].shapes if shape.has_text_frame
     )
     assert "Grade A" in slide1_text
-    assert "viscosity" in slide1_text
+    assert "Metric A" in slide1_text
 
     # Slide 2: Summary — should contain the verdict
     slide2_text = " ".join(
@@ -117,7 +117,7 @@ def test_build_report_with_ooc_events():
         "action_items": "Investigate root cause of out-of-control signals.",
     }
     metadata = {
-        "formula": "Grade A", "parameter": "viscosity",
+        "formula": "Grade A", "parameter": "Metric A",
         "date_range": ("2025-03-01", "2025-03-28"),
         "generated_at": "2025-03-20", "baseline_n": 10,
     }

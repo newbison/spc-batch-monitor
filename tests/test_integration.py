@@ -20,8 +20,8 @@ def test_full_pipeline_n10():
             date = f"2025-{(i // 28) + 1:02d}-{(i % 28) + 1:02d}"
             measurements = {}
             for param, (target, lsl, usl, sigma_between, sigma_within) in [
-                ("viscosity", (8.5, 5.0, 12.0, 1.0, 0.3)),
-                ("density", (5.0, 2.0, 8.0, 0.6, 0.2)),
+                ("Metric A", (8.5, 5.0, 12.0, 1.0, 0.3)),
+                ("Metric B", (5.0, 2.0, 8.0, 0.6, 0.2)),
             ]:
                 batch_mean = np.random.normal(target, sigma_between)
                 reps = [round(np.random.normal(batch_mean, sigma_within), 2)
@@ -32,7 +32,7 @@ def test_full_pipeline_n10():
         df = repo.load_all()
         assert len(df) == 40  # 20 batches × 2 params
 
-        adh_df = repo.get_for_parameter("viscosity")
+        adh_df = repo.get_for_parameter("Metric A")
         limits = compute_xbar_r(adh_df)
         assert len(limits["xbar"]) == 20
         assert limits["UCLx"] > limits["CLx"] > limits["LCLx"]
@@ -56,7 +56,7 @@ def test_sqlite_full_pipeline():
             date_str = f"2025-{(i // 28) + 1:02d}-{(i % 28) + 1:02d}"
             measurements = {}
             for param, (target, lsl, usl, sigma_between, sigma_within) in [
-                ("viscosity", (1.05, 0.6, 1.5, 0.15, 0.05)),
+                ("Metric A", (1.05, 0.6, 1.5, 0.15, 0.05)),
             ]:
                 batch_mean = np.random.normal(target, sigma_between)
                 reps = [round(np.random.normal(batch_mean, sigma_within), 3)
@@ -68,7 +68,7 @@ def test_sqlite_full_pipeline():
         assert len(df) == 10  # 10 batches x 1 param
 
         # SPC engine should work with the loaded data
-        adh_df = repo.get_for_parameter("viscosity")
+        adh_df = repo.get_for_parameter("Metric A")
         limits = compute_xbar_r(adh_df, n=5)
         assert len(limits["xbar"]) == 10
         assert limits["UCLx"] > limits["CLx"] > limits["LCLx"]

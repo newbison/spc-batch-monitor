@@ -107,10 +107,10 @@ No external DOE library required — the factorial generators are self-contained
 
 | Parameter | Replicates | LSL | USL | Units |
 |-----------|-----------|-----|-----|-------|
-| Viscosity | 5 | 0.6 | 1.5 | N/mm |
-| Density | 15 | 1000.0 | — | — |
-| Hardness | 8 | 10.0 | 50.0 | mm |
-| Elasticity | 10 | 5.0 | 20.0 | g/inch |
+| Metric A | 5 | 0.6 | 1.5 | N/mm |
+| Metric B | 15 | 1000.0 | — | — |
+| Metric C | 8 | 10.0 | 50.0 | mm |
+| Metric D | 10 | 5.0 | 20.0 | g/inch |
 
 Variable subgroup sizes (5–15) auto-detected by counting non-NaN replicates per row.
 

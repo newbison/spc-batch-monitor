@@ -9,7 +9,7 @@ class DataRepository(ABC):
 
     @abstractmethod
     def get_for_parameter(self, parameter: str) -> pd.DataFrame:
-        """Return rows for a single parameter (pH, IV, viscosity)."""
+        """Return rows for a single parameter (e.g. Metric A)."""
 
     @abstractmethod
     def append_batch(self, batch_id: str, date: str, formula: str,

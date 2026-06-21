@@ -2,7 +2,7 @@
 
 ## Overview
 
-A Streamlit web app for SPC monitoring of batch manufacturing processes and DOE (Design of Experiments). SPC monitors 4 parameters (viscosity, density, hardness, elasticity) with variable subgroup sizes (5–15 replicates). DOE supports full/fractional factorial and Box-Behnken designs with RSM analysis and multi-response desirability optimization. Multi-role support: operator data entry, engineer SPC analysis + DOE, manager dashboards, admin data management.
+A Streamlit web app for SPC monitoring of batch manufacturing processes and DOE (Design of Experiments). SPC monitors 4 parameters (Metric A, Metric B, Metric C, Metric D) with variable subgroup sizes (5–15 replicates). DOE supports full/fractional factorial and Box-Behnken designs with RSM analysis and multi-response desirability optimization. Multi-role support: operator data entry, engineer SPC analysis + DOE, manager dashboards, admin data management.
 
 ## Tech Stack
 
@@ -95,16 +95,16 @@ SPC/
 
 | Parameter | Reps | LSL | USL | Units |
 |-----------|------|-----|-----|-------|
-| viscosity | 5 | 0.6 | 1.5 | N/mm |
-| density | 15 | 1000.0 | — | — |
-| hardness | 8 | 10.0 | 50.0 | mm |
-| elasticity | 10 | 5.0 | 20.0 | g/inch |
+| Metric A | 5 | 0.6 | 1.5 | N/mm |
+| Metric B | 15 | 1000.0 | — | — |
+| Metric C | 8 | 10.0 | 50.0 | mm |
+| Metric D | 10 | 5.0 | 20.0 | g/inch |
 
 ### Data Format (CSV / SQLite)
 
 ```
 date,batch_id,formula,parameter,lower_spec,upper_spec,rep1,...,rep15
-2025-01-02,BATCH-001,Grade A,viscosity,0.6,1.5,1.118,1.157,1.201,...,NaN
+2025-01-02,BATCH-001,Grade A,Metric A,0.6,1.5,1.118,1.157,1.201,...,NaN
 ```
 
 - Specs are inline per-row (different formulas can have different limits)

@@ -23,22 +23,22 @@ def _build_template_csv(n: int) -> str:
     rows = [
         {
             "date": "2025-06-01", "batch_id": "BATCH-XXX", "formula": "Your Formula",
-            "parameter": "viscosity", "lower_spec": 0.6, "upper_spec": 1.5,
+            "parameter": "Metric A", "lower_spec": 0.6, "upper_spec": 1.5,
             **{f"rep{i}": round(1.05 + (i - 3) * 0.04, 3) for i in range(1, n + 1)},
         },
         {
             "date": "2025-06-01", "batch_id": "BATCH-XXX", "formula": "Your Formula",
-            "parameter": "density", "lower_spec": 1000.0, "upper_spec": None,
+            "parameter": "Metric B", "lower_spec": 1000.0, "upper_spec": None,
             **{f"rep{i}": round(1500 + (i - 5) * 40) for i in range(1, n + 1)},
         },
         {
             "date": "2025-06-01", "batch_id": "BATCH-XXX", "formula": "Your Formula",
-            "parameter": "hardness", "lower_spec": 10.0, "upper_spec": 50.0,
+            "parameter": "Metric C", "lower_spec": 10.0, "upper_spec": 50.0,
             **{f"rep{i}": round(30 + (i - 5) * 2, 1) for i in range(1, n + 1)},
         },
         {
             "date": "2025-06-01", "batch_id": "BATCH-XXX", "formula": "Your Formula",
-            "parameter": "elasticity", "lower_spec": 5.0, "upper_spec": 20.0,
+            "parameter": "Metric D", "lower_spec": 5.0, "upper_spec": 20.0,
             **{f"rep{i}": round(12.5 + (i - 5) * 0.8, 2) for i in range(1, n + 1)},
         },
     ]
@@ -82,7 +82,7 @@ def _render_csv_upload(repo: DataRepository):
 | `date` | Batch date (YYYY-MM-DD) |
 | `batch_id` | Unique batch/lot identifier |
 | `formula` | Formula or product name |
-| `parameter` | Test name (e.g. viscosity, density, hardness, elasticity) |
+| `parameter` | Test name (e.g. Metric A, Metric B, Metric C, Metric D) |
 | `rep1` … `rep{n}` | {n} replicate measurements |
 | `lower_spec` | Lower specification limit (leave blank if none) |
 | `upper_spec` | Upper specification limit (leave blank if none) |
@@ -184,7 +184,7 @@ def _render_manual_entry(repo: DataRepository):
 
     params = repo.get_parameters()
     if not params:
-        params = ["viscosity", "density", "hardness", "elasticity"]
+        params = ["Metric A", "Metric B", "Metric C", "Metric D"]
 
     measurements = {}
     cols = st.columns(len(params))
@@ -232,7 +232,7 @@ def _render_manual_entry(repo: DataRepository):
                         val = rcols[j].number_input(
                             f"R{idx + 1}", value=default,
                             key=f"{param}_r{idx + 1}",
-                            format="%.3f" if param == "elasticity" else "%.2f",
+                            format="%.3f" if param == "Metric D" else "%.2f",
                             label_visibility="collapsed",
                         )
                         rep_vals.append(val)
