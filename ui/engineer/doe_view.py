@@ -22,7 +22,7 @@ from doe.designs import (
 )
 from doe.analysis import fit_linear, fit_rsm, _is_center_row, anova_table
 from doe.optimization import optimize as doe_optimize
-from doe.residuals import compute_residuals, build_residual_plots
+from doe.residuals import build_residual_plots
 from doe.profiler import compute_profile, compute_overall_desirability
 from doe.evaluate import evaluate_design
 
@@ -338,19 +338,13 @@ def _render_analyze_tab(doe_repo: DoeRepository):
             st.markdown(f"**{rname}**")
             resid_dict = {
                 "residuals": np.array(resid_data.get("residual", [])),
-                "studentized": np.array([v or np.nan for v in resid_data.get("studentized", [])]),
+                "studentized": np.array([v if v is not None else float('nan') for v in resid_data.get("studentized", [])]),
                 "predicted": np.array(resid_data.get("predicted", [])),
                 "run_order": np.array(resid_data.get("run", [])),
-                "leverage": np.array([v or 0 for v in resid_data.get("leverage", [])]),
-                "cooks_d": np.array([v or 0 for v in [] if v]),
+                "leverage": np.array([v if v is not None else 0.0 for v in resid_data.get("leverage", [])]),
+                "cooks_d": np.array([v if v is not None else 0.0 for v in resid_data.get("cooks_d", [])]) if resid_data.get("cooks_d") else np.zeros(len(resid_data.get("residual", []))),
                 "shapiro_p": None,
             }
-
-            # Recompute for proper structures
-            obs = np.array(resid_data.get("observed", []))
-            pred = np.array(resid_data.get("predicted", []))
-            X = np.column_stack([np.ones(len(obs)), np.arange(len(obs))])  # placeholder
-            resid_dict = compute_residuals(obs, pred, X, np.array(resid_data.get("run", [])))
 
             fig = build_residual_plots(resid_dict)
             st.plotly_chart(fig, use_container_width=True)
@@ -556,7 +550,11 @@ def _render_setup_section(session: dict):
                     st.session_state.doe_factors_list.pop(i)
                     st.rerun()
 
-    st.button("+ Add Factor", key="doe_add_f")
+    if st.button("+ Add Factor", key="doe_add_f"):
+        st.session_state.doe_factors_list.append(
+            {"name": "", "type": "continuous", "low": 0.0, "high": 100.0}
+        )
+        st.rerun()
 
     # Responses
     st.markdown("**Responses**")
@@ -588,20 +586,17 @@ def _render_setup_section(session: dict):
                     st.session_state.doe_responses_list.pop(i)
                     st.rerun()
 
-    st.button("+ Add Response", key="doe_add_r")
+    if st.button("+ Add Response", key="doe_add_r"):
+        st.session_state.doe_responses_list.append(
+            {"name": "", "goal": "maximize", "target": None, "low": 0.0, "high": 100.0}
+        )
+        st.rerun()
 
     # Save to session
     valid_factors = [f for f in st.session_state.doe_factors_list if f.get("name") and str(f["name"]).strip()]
     valid_responses = [r for r in st.session_state.doe_responses_list if r.get("name") and str(r["name"]).strip()]
     session["factors_json"] = valid_factors
     session["responses_json"] = valid_responses
-
-    if valid_factors and valid_responses and session.get("db_id") and session.get("status") == "defined":
-        from doe.persistence import DoeRepository
-        from config import DB_FILE
-        dr = DoeRepository(DB_FILE)
-        dr.update(session["db_id"], {"factors": valid_factors, "responses": valid_responses})
-        session["status"] = "designed"
 
 
 def _reset_doe():
