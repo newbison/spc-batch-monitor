@@ -215,3 +215,132 @@ def test_is_center_row():
     design = pd.DataFrame({"A": [-1.0, 0.0, 1.0, 0.001], "B": [-1.0, 0.0, 0.0, 0.0]})
     result = _is_center_row(design, ["A", "B"], tol=0.01)
     assert result.tolist() == [False, True, False, True]  # row 4: A=0.001 < 0.01 -> True
+
+
+def test_fit_linear_returns_anova():
+    """fit_linear should include anova table, residuals, and model summary keys."""
+    factors = [
+        {"name": "A", "type": "continuous", "low": 10, "high": 20},
+        {"name": "B", "type": "continuous", "low": 30, "high": 50},
+    ]
+    design = pd.DataFrame({
+        "run": [1, 2, 3, 4, 5, 6, 7, 8],
+        "A": [-1, 1, -1, 1, -1, 1, -1, 1],
+        "B": [-1, -1, 1, 1, -1, -1, 1, 1],
+    })
+    # Perfect 2-factor model: y = 10 + 3*A + 2*B + 1*A*B
+    results = pd.DataFrame({
+        "run": [1, 2, 3, 4, 5, 6, 7, 8],
+        "response": [10 - 3 - 2 + 1, 10 + 3 - 2 - 1,
+                     10 - 3 + 2 - 1, 10 + 3 + 2 + 1,
+                     10 - 3 - 2 + 1, 10 + 3 - 2 - 1,
+                     10 - 3 + 2 - 1, 10 + 3 + 2 + 1],
+    })
+
+    model = fit_linear(factors, design, results, "response")
+
+    # New keys must be present
+    assert "anova" in model
+    assert "residuals" in model
+    assert "lack_of_fit_p" in model
+    assert "n_obs" in model
+    assert "n_params" in model
+
+    # ANOVA structure
+    anova = model["anova"]
+    assert "source" in anova
+    assert "ss" in anova
+    assert "df" in anova
+    assert "ms" in anova
+    assert "f" in anova
+    assert "p" in anova
+    assert len(anova["source"]) >= 4  # at least: Model, Residual, Total, + some terms
+
+    # Residuals structure
+    res = model["residuals"]
+    assert "run" in res
+    assert "observed" in res
+    assert "predicted" in res
+    assert "residual" in res
+    assert "studentized" in res
+    assert len(res["run"]) == 8
+
+    # Model summary
+    assert model["n_obs"] == 8
+    assert model["n_params"] > 0  # at least intercept + 1 term
+    assert 0 < model["r_squared"] <= 1.0
+    assert model["rmse"] > 0
+
+    # Old keys still present (backward compat)
+    assert "coefficients" in model
+    assert len(model["coefficients"]) > 0
+
+
+def test_fit_linear_anova_values_perfect_fit():
+    """ANOVA SS should decompose correctly for a perfect orthogonal model."""
+    factors = [
+        {"name": "X1", "type": "continuous", "low": -1, "high": 1},
+        {"name": "X2", "type": "continuous", "low": -1, "high": 1},
+    ]
+    design = pd.DataFrame({
+        "run": range(1, 9),
+        "X1": [-1, 1, -1, 1, -1, 1, -1, 1],
+        "X2": [-1, -1, 1, 1, -1, -1, 1, 1],
+    })
+    # y = 5 + 2*X1 (no noise, X2 has no effect)
+    results = pd.DataFrame({
+        "run": range(1, 9),
+        "y": [5 - 2, 5 + 2, 5 - 2, 5 + 2, 5 - 2, 5 + 2, 5 - 2, 5 + 2],
+    })
+
+    model = fit_linear(factors, design, results, "y")
+
+    # X1 should have large F, X2 should have F ≈ 0
+    anova = model["anova"]
+    ss_total = anova["ss"][anova["source"].index("Total")]
+    ss_residual = anova["ss"][anova["source"].index("Residual")]
+    # With perfect fit and no X2 effect, residual SS should be ~0
+    assert ss_residual < 1e-10
+    # Model SS should be virtually all of total SS
+    ss_model = anova["ss"][anova["source"].index("Model")]
+    assert abs(ss_model - ss_total) < 1e-10
+
+
+def test_fit_rsm_returns_anova():
+    """fit_rsm should also return ANOVA with curvature test."""
+    factors = [
+        {"name": "T", "type": "continuous", "low": 80, "high": 120},
+        {"name": "P", "type": "continuous", "low": 2.0, "high": 4.0},
+    ]
+    # CCD-like design with center points
+    runs = []
+    for t in [-1, 1]:
+        for p in [-1, 1]:
+            runs.append({"T": t, "P": p})
+    # Add 3 center points
+    for _ in range(3):
+        runs.append({"T": 0.0, "P": 0.0})
+    runs.append({"T": -1.414, "P": 0.0})
+    runs.append({"T": 1.414, "P": 0.0})
+    runs.append({"T": 0.0, "P": -1.414})
+    runs.append({"T": 0.0, "P": 1.414})
+
+    design = pd.DataFrame(runs)
+    design.insert(0, "run", range(1, len(runs) + 1))
+
+    np.random.seed(42)
+    results = pd.DataFrame({
+        "run": design["run"],
+        "y": [10 + 3*t + 2*p + 1*t*p + 0.5*t**2 + np.random.normal(0, 0.1)
+              for t, p in zip(design["T"], design["P"])],
+    })
+
+    model = fit_rsm(factors, design, results, "y")
+
+    assert "anova" in model
+    assert "residuals" in model
+    assert "has_curvature" in model
+    assert "curvature_p_value" in model
+
+    # R-squared should be high (we built a model with small noise)
+    assert model["r_squared"] > 0.9
