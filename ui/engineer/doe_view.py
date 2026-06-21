@@ -628,7 +628,7 @@ def _render_setup_section(session: dict):
         is_cat = row.get("type") == "categorical"
 
         if is_cat:
-            # Categorical: name + type + level labels
+            # Categorical: name + type + level labels via select boxes
             c_name, c_type, c_del = st.columns([3, 2, 1])
             with c_name:
                 row["name"] = st.text_input("Name", row.get("name", ""), key=f"fac_n_{i}",
@@ -642,23 +642,41 @@ def _render_setup_section(session: dict):
                         st.session_state.doe_factors_list.pop(i)
                         st.rerun()
 
-            # Level inputs — one row per level
+            # Level inputs — select boxes with predefined + custom options
             if "levels" not in row or not row["levels"]:
                 row["levels"] = ["A", "B"]
-            for li, lv in enumerate(row["levels"]):
+            PRESET_LEVELS = ["A", "B", "C", "D", "Low", "High", "Control", "Treatment", "Yes", "No"]
+            for li in range(len(row["levels"])):
+                lv = row["levels"][li]
+                # Build options: presets + current value + custom trigger
+                options = list(PRESET_LEVELS)
+                if lv and lv not in options:
+                    options.insert(0, lv)
+                options.append("✏ Custom...")
+                custom_key = f"fac_lev_custom_{i}_{li}"
+                if custom_key not in st.session_state:
+                    st.session_state[custom_key] = (lv if lv not in PRESET_LEVELS else "")
                 lc1, lc2 = st.columns([5, 1])
                 with lc1:
-                    row["levels"][li] = st.text_input(
-                        f"Level {li+1}", lv, key=f"fac_lev_{i}_{li}",
-                        label_visibility="collapsed",
-                        placeholder=f"Level {li+1} (e.g. {'ABCD'[li]})",
+                    chosen = st.selectbox(
+                        f"Level {li+1}", options,
+                        index=options.index(lv) if lv in options else len(options)-1,
+                        key=f"fac_lev_{i}_{li}", label_visibility="collapsed",
                     )
+                    if chosen == "✏ Custom...":
+                        row["levels"][li] = st.text_input(
+                            f"Custom level {li+1}", st.session_state[custom_key],
+                            key=f"fac_levtxt_{i}_{li}", label_visibility="collapsed",
+                            placeholder="Type a custom level name",
+                        )
+                        st.session_state[custom_key] = row["levels"][li]
+                    else:
+                        row["levels"][li] = chosen
                 with lc2:
                     if len(row["levels"]) > 2:
                         if st.button("✕", key=f"fac_levdel_{i}_{li}"):
                             row["levels"].pop(li)
                             st.rerun()
-            # Add level button
             if st.button(f"+ Add level", key=f"fac_addlev_{i}"):
                 row["levels"].append("")
                 st.rerun()
