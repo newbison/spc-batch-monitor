@@ -10,6 +10,147 @@ import statsmodels.api as sm
 from scipy import stats
 
 
+def _compute_anova(ols_result, X_cols: list[str], y: np.ndarray) -> dict:
+    """Decompose OLS results into Type I (sequential) ANOVA table.
+
+    Parameters
+    ----------
+    ols_result : statsmodels RegressionResults
+        Fitted OLS model.
+    X_cols : list of str
+        Column names matching the design matrix (first = "Intercept").
+    y : np.ndarray
+        Observed response values.
+
+    Returns
+    -------
+    dict with keys: source, ss, df, ms, f, p — each a list matching X_cols
+    plus "Model" (combined), "Residual", "Total".
+    """
+    # Type I (sequential) SS via nested-model comparison
+    X_full = ols_result.model.exog
+    n_obs = len(y)
+    total_ss = np.sum((y - np.mean(y)) ** 2)
+
+    sources = []
+    ss_vals = []
+    df_vals = []
+
+    # Null model (intercept only)
+    ss_resid_prev = np.sum((y - np.mean(y)) ** 2)  # = total_ss
+    df_resid_prev = n_obs - 1
+
+    # Sequential: add terms one at a time
+    n_terms = X_full.shape[1]  # includes intercept
+    for i in range(1, n_terms):  # skip intercept (index 0)
+        # Fit model with terms 0..i
+        X_sub = X_full[:, :i + 1]
+        ols_sub = sm.OLS(y, X_sub).fit()
+        ss_resid_curr = np.sum(ols_sub.resid ** 2)
+        df_resid_curr = n_obs - (i + 1)
+
+        ss_term = ss_resid_prev - ss_resid_curr
+        df_term = df_resid_prev - df_resid_curr
+
+        sources.append(X_cols[i])
+        ss_vals.append(max(ss_term, 0.0))  # guard against floating-point negatives
+        df_vals.append(df_term)
+
+        ss_resid_prev = ss_resid_curr
+        df_resid_prev = df_resid_curr
+
+    # Model row: sum of all term SS
+    ss_model = sum(ss_vals)
+    df_model = sum(df_vals)
+
+    # Residual row
+    ss_residual = float(np.sum(ols_result.resid ** 2))
+    df_residual = n_obs - n_terms
+    ms_residual = ss_residual / df_residual if df_residual > 0 else 0.0
+
+    # Build lists
+    source_list = ["Model"] + sources + ["Residual", "Total"]
+    ss_list = [ss_model] + ss_vals + [ss_residual, total_ss]
+    df_list = [df_model] + df_vals + [df_residual, n_obs - 1]
+
+    # MS = SS / df, None for Total
+    ms_list = []
+    for ss, df in zip(ss_list, df_list):
+        if df is not None and df > 0:
+            ms_list.append(ss / df)
+        else:
+            ms_list.append(None)
+
+    # F = MS_term / MS_residual, None for Residual and Total
+    f_list = []
+    for i, ms in enumerate(ms_list):
+        source = source_list[i]
+        if source in ("Residual", "Total") or ms is None or ms_residual == 0:
+            f_list.append(None)
+        else:
+            f_list.append(ms / ms_residual)
+
+    # p-values from F distribution
+    p_list = []
+    for i, f_val in enumerate(f_list):
+        source = source_list[i]
+        df_num = df_list[i]
+        if source in ("Residual", "Total") or f_val is None or df_num is None:
+            p_list.append(None)
+        elif df_residual > 0:
+            from scipy.stats import f as f_dist
+            p_list.append(float(1 - f_dist.cdf(f_val, df_num, df_residual)))
+        else:
+            p_list.append(None)
+
+    return {
+        "source": source_list,
+        "ss": [float(v) if v is not None else None for v in ss_list],
+        "df": df_list,
+        "ms": [float(v) if v is not None else None for v in ms_list],
+        "f": [float(v) if v is not None else None for v in f_list],
+        "p": p_list,
+    }
+
+
+def _compute_residuals_data(ols_result, y: np.ndarray, runs: np.ndarray) -> dict:
+    """Compute residual diagnostics from fitted OLS model.
+
+    Returns dict with: run, observed, predicted, residual, studentized, leverage.
+    """
+    y_pred = ols_result.fittedvalues
+    residuals = y - y_pred
+    n_obs = len(y)
+    n_params = ols_result.df_model + 1  # +1 for intercept
+    mse = np.sum(residuals ** 2) / (n_obs - n_params) if n_obs > n_params else 0.0
+
+    # Hat matrix diagonal (leverage)
+    X = ols_result.model.exog
+    try:
+        H = X @ np.linalg.inv(X.T @ X) @ X.T
+        leverage = np.diag(H)
+    except np.linalg.LinAlgError:
+        leverage = np.full(n_obs, np.nan)
+
+    # Externally studentized residuals
+    studentized = np.full(n_obs, np.nan)
+    for i in range(n_obs):
+        if leverage[i] >= 1.0:
+            continue
+        sigma2_i = (np.sum(residuals ** 2) - residuals[i] ** 2 / (1 - leverage[i])) / (n_obs - n_params - 1)
+        if sigma2_i > 0:
+            studentized[i] = residuals[i] / np.sqrt(sigma2_i * (1 - leverage[i]))
+
+    return {
+        "run": [int(r) for r in runs],
+        "observed": [float(v) for v in y],
+        "predicted": [float(v) for v in y_pred],
+        "residual": [float(v) for v in residuals],
+        "studentized": [float(v) if np.isfinite(v) else None for v in studentized],
+        "leverage": [float(v) if np.isfinite(v) else None for v in leverage],
+    }
+
+
 def _is_center_row(design: pd.DataFrame, factor_names: list[str],
                    tol: float = 0.01) -> np.ndarray:
     """Return boolean array: True for rows where ALL factors are within `tol` of 0.
@@ -125,12 +266,45 @@ def fit_linear(factors: list[dict], design: pd.DataFrame, results: pd.DataFrame,
             "significant": bool(pv < alpha) if np.isfinite(pv) else False,
         })
 
+    residuals_data = _compute_residuals_data(ols, y, merged["run"].values)
+    anova = _compute_anova(ols, X_cols, y)
+
+    # Lack-of-fit test: only possible if there are replicated runs
+    lack_of_fit_p = None
+    n_unique = len(merged[factor_names].drop_duplicates())
+    if n_unique < len(merged):
+        # Replicates exist — pure-error SS computable
+        grouped = merged.groupby(factor_names)
+        ss_pe = 0.0
+        df_pe = 0
+        for _, group in grouped:
+            if len(group) > 1:
+                group_mean = group[response_name].mean()
+                ss_pe += np.sum((group[response_name].values - group_mean) ** 2)
+                df_pe += len(group) - 1
+        if df_pe > 0:
+            ss_lof = np.sum(ols.resid ** 2) - ss_pe
+            df_lof = len(merged) - len(X_cols) - df_pe
+            if df_lof > 0 and df_pe > 0:
+                ms_lof = ss_lof / df_lof
+                ms_pe = ss_pe / df_pe
+                f_lof = ms_lof / ms_pe if ms_pe > 0 else 0.0
+                lack_of_fit_p = float(1 - stats.f.cdf(f_lof, df_lof, df_pe))
+
     return {
+        "model_type": "linear",
         "coefficients": coefficients,
+        "anova": anova,
         "r_squared": float(ols.rsquared) if np.isfinite(ols.rsquared) else None,
         "r_squared_adj": float(ols.rsquared_adj) if np.isfinite(ols.rsquared_adj) else None,
         "model_p_value": float(ols.f_pvalue) if np.isfinite(ols.f_pvalue) else None,
-        "rmse": float(np.sqrt(ols.mse_resid)) if hasattr(ols, 'mse_resid') and np.isfinite(ols.mse_resid) else None,
+        "rmse": 0.0 if (hasattr(ols, 'mse_resid') and ols.mse_resid < 1e-12) else (
+            float(np.sqrt(ols.mse_resid)) if hasattr(ols, 'mse_resid') and np.isfinite(ols.mse_resid) else None
+        ),
+        "residuals": residuals_data,
+        "lack_of_fit_p": lack_of_fit_p,
+        "n_obs": len(merged),
+        "n_params": len(X_cols),
     }
 
 
@@ -194,14 +368,46 @@ def fit_rsm(factors: list[dict], design: pd.DataFrame, results: pd.DataFrame,
     # Curvature test: center points vs factorial points
     curvature_p, has_curv = _curvature_test(merged, y, factor_names)
 
+    residuals_data = _compute_residuals_data(ols, y, merged["run"].values)
+    anova = _compute_anova(ols, X_cols, y)
+
+    # Lack-of-fit test
+    lack_of_fit_p = None
+    n_unique = len(merged[factor_names].drop_duplicates())
+    if n_unique < len(merged):
+        grouped = merged.groupby(factor_names)
+        ss_pe = 0.0
+        df_pe = 0
+        for _, group in grouped:
+            if len(group) > 1:
+                group_mean = group[response_name].mean()
+                ss_pe += np.sum((group[response_name].values - group_mean) ** 2)
+                df_pe += len(group) - 1
+        if df_pe > 0:
+            ss_lof = np.sum(ols.resid ** 2) - ss_pe
+            df_lof = len(merged) - len(X_cols) - df_pe
+            if df_lof > 0 and df_pe > 0:
+                ms_lof = ss_lof / df_lof
+                ms_pe = ss_pe / df_pe
+                f_lof = ms_lof / ms_pe if ms_pe > 0 else 0.0
+                lack_of_fit_p = float(1 - stats.f.cdf(f_lof, df_lof, df_pe))
+
     return {
+        "model_type": "rsm",
         "coefficients": coefficients,
+        "anova": anova,
         "r_squared": float(ols.rsquared) if np.isfinite(ols.rsquared) else None,
         "r_squared_adj": float(ols.rsquared_adj) if np.isfinite(ols.rsquared_adj) else None,
         "model_p_value": float(ols.f_pvalue) if np.isfinite(ols.f_pvalue) else None,
         "curvature_p_value": curvature_p,
         "has_curvature": has_curv,
-        "rmse": float(np.sqrt(ols.mse_resid)) if hasattr(ols, 'mse_resid') and np.isfinite(ols.mse_resid) else None,
+        "rmse": 0.0 if (hasattr(ols, 'mse_resid') and ols.mse_resid < 1e-12) else (
+            float(np.sqrt(ols.mse_resid)) if hasattr(ols, 'mse_resid') and np.isfinite(ols.mse_resid) else None
+        ),
+        "residuals": residuals_data,
+        "lack_of_fit_p": lack_of_fit_p,
+        "n_obs": len(merged),
+        "n_params": len(X_cols),
     }
 
 
@@ -293,3 +499,26 @@ def predict_from_model(model: dict, factors: list[dict], point: dict) -> float:
             prediction += coefs[term] * point.get(f["name"], 0.0) ** 2
 
     return prediction
+
+
+def anova_table(model: dict) -> "pd.DataFrame":
+    """Extract ANOVA table as a display-ready DataFrame."""
+    import pandas as pd
+    anova = model.get("anova", {})
+    if not anova:
+        return pd.DataFrame()
+    df = pd.DataFrame({
+        "Source": anova["source"],
+        "SS": anova["ss"],
+        "df": anova["df"],
+        "MS": anova["ms"],
+        "F": anova["f"],
+        "p": anova["p"],
+    })
+    # Format numeric columns
+    for col in ["SS", "MS", "F", "p"]:
+        if col in df.columns:
+            df[col] = df[col].apply(
+                lambda x: f"{x:.4f}" if isinstance(x, (int, float)) and x is not None else "—"
+            )
+    return df
