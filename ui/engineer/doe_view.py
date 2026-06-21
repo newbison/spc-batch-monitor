@@ -625,80 +625,60 @@ def _render_setup_section(session: dict):
         ]
 
     for i, row in enumerate(st.session_state.doe_factors_list):
-        # -- Always render name + type first (same layout, avoids widget key conflict) --
-        c_name, c_type, c_del = st.columns([3, 2, 1])
-        with c_name:
-            row["name"] = st.text_input("Name", row.get("name", ""), key=f"fac_n_{i}",
-                                        label_visibility="collapsed", placeholder=f"Factor {i+1}")
-        with c_type:
-            cur_type = row.get("type", "continuous")
-            row["type"] = st.selectbox(
-                "Type", ["continuous", "categorical"],
-                index=1 if cur_type == "categorical" else 0,
-                key=f"fac_t_{i}", label_visibility="collapsed",
-            )
-        with c_del:
-            if len(st.session_state.doe_factors_list) > 1:
-                if st.button("✕", key=f"fac_del_{i}"):
-                    st.session_state.doe_factors_list.pop(i)
-                    st.rerun()
-
-        is_cat = row["type"] == "categorical"
+        is_cat = row.get("type") == "categorical"
 
         if is_cat:
-            # Ensure levels exist (migrate from continuous)
+            # One compact line: name | type ▼ | level inputs... | +level | ✕
             if "levels" not in row or not row["levels"]:
                 row["levels"] = ["A", "B"]
-            PRESET_LEVELS = ["A", "B", "C", "D", "Low", "High", "Control", "Treatment", "Yes", "No"]
-            for li in range(len(row["levels"])):
-                lv = row["levels"][li]
-                options = list(PRESET_LEVELS)
-                if lv and lv not in options:
-                    options.insert(0, lv)
-                options.append("✏ Custom...")
-                custom_key = f"fac_lev_custom_{i}_{li}"
-                if custom_key not in st.session_state:
-                    st.session_state[custom_key] = (lv if lv not in PRESET_LEVELS else "")
-                lc1, lc2 = st.columns([5, 1])
-                with lc1:
-                    chosen = st.selectbox(
-                        f"Level {li+1}", options,
-                        index=options.index(lv) if lv in options else len(options)-1,
-                        key=f"fac_lev_{i}_{li}", label_visibility="collapsed",
+            n_levels = len(row["levels"])
+            # Dynamic columns: name(2) + type(1.5) + one per level(each 1.5) + add(0.5) + del(0.5)
+            cols = st.columns([2.5, 1.5] + [1.5] * n_levels + [0.5, 0.5])
+            with cols[0]:
+                row["name"] = st.text_input("Name", row.get("name", ""), key=f"fac_n_{i}",
+                                            label_visibility="collapsed", placeholder=f"Factor {i+1}")
+            with cols[1]:
+                row["type"] = st.selectbox("Type", ["continuous", "categorical"],
+                                           index=1, key=f"fac_t_{i}", label_visibility="collapsed")
+            for li in range(n_levels):
+                with cols[2 + li]:
+                    row["levels"][li] = st.text_input(
+                        f"Lv{li+1}", row["levels"][li], key=f"fac_lev_{i}_{li}",
+                        label_visibility="collapsed", placeholder=f"Level {li+1}",
                     )
-                    if chosen == "✏ Custom...":
-                        row["levels"][li] = st.text_input(
-                            f"Custom level {li+1}", st.session_state[custom_key],
-                            key=f"fac_levtxt_{i}_{li}", label_visibility="collapsed",
-                            placeholder="Type a custom level name",
-                        )
-                        st.session_state[custom_key] = row["levels"][li]
-                    else:
-                        row["levels"][li] = chosen
-                with lc2:
-                    if len(row["levels"]) > 2:
-                        if st.button("✕", key=f"fac_levdel_{i}_{li}"):
-                            row["levels"].pop(li)
-                            st.rerun()
-            if st.button(f"+ Add level", key=f"fac_addlev_{i}"):
-                row["levels"].append("")
-                st.rerun()
-            st.caption("")
+            with cols[2 + n_levels]:
+                if st.button("+", key=f"fac_addlev_{i}", help="Add level"):
+                    row["levels"].append("")
+                    st.rerun()
+            with cols[2 + n_levels + 1]:
+                if len(st.session_state.doe_factors_list) > 1:
+                    if st.button("✕", key=f"fac_del_{i}", help="Remove factor"):
+                        st.session_state.doe_factors_list.pop(i)
+                        st.rerun()
         else:
-            # Continuous: optional low/high bounds
-            c_low, c_high = st.columns(2)
-            with c_low:
+            # One compact line: name | type ▼ | low | high | ✕
+            c1, c2, c3, c4, c5 = st.columns([2.5, 1.5, 1.5, 1.5, 0.5])
+            with c1:
+                row["name"] = st.text_input("Name", row.get("name", ""), key=f"fac_n_{i}",
+                                            label_visibility="collapsed", placeholder=f"Factor {i+1}")
+            with c2:
+                row["type"] = st.selectbox("Type", ["continuous", "categorical"],
+                                           index=0, key=f"fac_t_{i}", label_visibility="collapsed")
+            with c3:
                 low_val = row.get("low")
-                row["low"] = st.number_input("Lower bound", value=float(low_val) if low_val is not None else 0.0,
+                row["low"] = st.number_input("Low", value=float(low_val) if low_val is not None else 0.0,
                                              key=f"fac_l_{i}", label_visibility="collapsed",
-                                             step=0.01, format="%.4f",
-                                             help="Lower bound (optional — any numeric value)")
-            with c_high:
+                                             step=0.01, format="%.4f")
+            with c4:
                 high_val = row.get("high")
-                row["high"] = st.number_input("Upper bound", value=float(high_val) if high_val is not None else 1.0,
+                row["high"] = st.number_input("High", value=float(high_val) if high_val is not None else 1.0,
                                               key=f"fac_h_{i}", label_visibility="collapsed",
-                                              step=0.01, format="%.4f",
-                                              help="Upper bound (optional — any numeric value)")
+                                              step=0.01, format="%.4f")
+            with c5:
+                if len(st.session_state.doe_factors_list) > 1:
+                    if st.button("✕", key=f"fac_del_{i}", help="Remove factor"):
+                        st.session_state.doe_factors_list.pop(i)
+                        st.rerun()
 
     if st.button("+ Add Factor", key="doe_add_f"):
         st.session_state.doe_factors_list.append(
